@@ -158,7 +158,7 @@ export default function CashFlow() {
         <div className="card-title" style={{ marginBottom: 12 }}>6-Month Overview</div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={months} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a3347" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e6ee" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />

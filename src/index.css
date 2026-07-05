@@ -1,6 +1,6 @@
 /* ════════════════════════════════════════════════════════════════
-   LEDGR — Design System
-   Palette: deep navy bg · slate surfaces · indigo accent · clean whites
+   DBC CLIENT LEDGER — Design System
+   Palette: light neutral bg · white surfaces · same blue accent
    ════════════════════════════════════════════════════════════════ */
 
 @font-face { font-family: 'Inter'; font-weight: 400; font-style: normal; src: url('/fonts/inter-latin-400-normal.woff2') format('woff2'); font-display: swap; }
@@ -13,36 +13,36 @@
 
 :root {
   /* Backgrounds */
-  --bg:         #0d1117;
-  --surface:    #13181f;
-  --surface2:   #1a2030;
-  --surface3:   #202838;
+  --bg:         #f4f6f9;
+  --surface:    #ffffff;
+  --surface2:   #eef1f6;
+  --surface3:   #e3e7ef;
 
   /* Borders */
-  --border:     #252e3f;
-  --border2:    #2e3a50;
+  --border:     #e2e6ee;
+  --border2:    #d3d9e4;
 
-  /* Accent — indigo */
+  /* Accent — same blue as before */
   --accent:        #4f72f5;
   --accent-dim:    #3a5bd9;
   --accent-hover:  #5a7cf7;
-  --accent-glow:   rgba(79,114,245,0.12);
-  --accent-subtle: rgba(79,114,245,0.06);
+  --accent-glow:   rgba(79,114,245,0.14);
+  --accent-subtle: rgba(79,114,245,0.08);
 
-  /* Semantic colours */
-  --green:      #34d399;
-  --green-dim:  rgba(52,211,153,0.12);
-  --red:        #f87171;
-  --red-dim:    rgba(248,113,113,0.12);
-  --amber:      #fbbf24;
-  --amber-dim:  rgba(251,191,36,0.12);
-  --purple:     #a78bfa;
-  --purple-dim: rgba(167,139,250,0.12);
+  /* Semantic colours — retuned for contrast on a white surface */
+  --green:      #15803d;
+  --green-dim:  rgba(21,128,61,0.10);
+  --red:        #dc2626;
+  --red-dim:    rgba(220,38,38,0.09);
+  --amber:      #b45309;
+  --amber-dim:  rgba(180,83,9,0.10);
+  --purple:     #7c3aed;
+  --purple-dim: rgba(124,58,237,0.09);
 
   /* Text */
-  --text-1:  #eef2f7;
-  --text-2:  #8b97b0;
-  --text-3:  #4e5c73;
+  --text-1:  #101828;
+  --text-2:  #5b6478;
+  --text-3:  #8992a3;
 
   /* Typography */
   --sans: 'Inter', system-ui, -apple-system, sans-serif;
@@ -59,10 +59,10 @@
   --nav-h:      58px;
   --sidebar-w:  228px;
 
-  /* Shadows */
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
-  --shadow:     0 4px 20px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.3);
-  --shadow-lg:  0 12px 48px rgba(0,0,0,0.6);
+  /* Shadows — much softer than a dark theme needs */
+  --shadow-sm:  0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05);
+  --shadow:     0 4px 16px rgba(16,24,40,0.07), 0 1px 4px rgba(16,24,40,0.05);
+  --shadow-lg:  0 16px 48px rgba(16,24,40,0.14);
 }
 
 /* ── Reset ──────────────────────────────────────────────────── */
@@ -284,7 +284,8 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 20px 22px;
-  transition: border-color 0.15s;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .card-header {
@@ -322,8 +323,10 @@ body {
   padding: 18px 20px;
   position: relative;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
+.stat-card:hover { box-shadow: var(--shadow); }
 
 .stat-card::before {
   content: '';

@@ -208,9 +208,9 @@ export default function ChartOfAccounts() {
               </div>
               <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 30)}>
                 <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3347" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e6ee" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11, fill: '#5b6478' }} axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="balance" radius={[0, 4, 4, 0]}>
                     {chartData.map((d, i) => <Cell key={i} fill={TYPE_COLOR[d.type]} />)}
