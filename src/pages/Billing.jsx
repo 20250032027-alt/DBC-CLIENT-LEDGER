@@ -4,7 +4,7 @@ import { fmt, fmtDate } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, Receipt, CheckCircle, Clock, AlertTriangle, Printer } from 'lucide-react'
 
 // ── Print Invoice ────────────────────────────────────────────────────────────
-function printInvoice(bill, settings) {
+function printInvoice(bill, settings, clients = []) {
   const w = window.open('', '_blank', 'width=900,height=700')
   const lines = bill.lines || []
   const subtotal = bill.subtotal ?? lines.reduce((s, l) => s + parseFloat(l.qty || 0) * parseFloat(l.rate || 0), 0)
@@ -12,6 +12,7 @@ function printInvoice(bill, settings) {
   const total = bill.total ?? subtotal + tax
   const taxRate = settings.taxScheme === 'percentage' ? (settings.percentageTaxRate ?? 3) : (settings.vatRate ?? 12)
   const taxLabel = settings.taxScheme === 'percentage' ? 'Percentage Tax' : 'VAT'
+  const client = clients.find(c => c.id === bill.clientId)
 
   // Format date nicely e.g. "June 27, 2026"
   function fmtPrint(iso) {
@@ -243,6 +244,7 @@ function printInvoice(bill, settings) {
       ${settings.address
         ? `<div class="firm-details">${settings.address.replace(/\n/g, '<br>')}</div>`
         : ''}
+      ${settings.tin ? `<div class="firm-details">TIN: ${settings.tin}</div>` : ''}
     </div>
     <div class="invoice-block">
       <div class="invoice-label">INVOICE</div>
@@ -261,6 +263,8 @@ function printInvoice(bill, settings) {
     <div>
       <div class="section-label">Bill To</div>
       <div class="client-name">${bill.clientName || '—'}</div>
+      ${client?.address ? `<div style="font-size:12px;color:#555;margin-top:2px">${client.address}</div>` : ''}
+      ${client?.tin ? `<div style="font-size:12px;color:#555;margin-top:2px">TIN: ${client.tin}</div>` : ''}
     </div>
     <div style="text-align:right">
       <div class="section-label">Status</div>
@@ -737,7 +741,7 @@ export default function Billing() {
                   <td>
                     <div className="row-actions">
                       <button className="icon-btn" title="Print Invoice"
-                        onClick={() => printInvoice(b, settings)}>
+                        onClick={() => printInvoice(b, settings, clients)}>
                         <Printer size={14} />
                       </button>
                       {b.status !== 'paid' && (

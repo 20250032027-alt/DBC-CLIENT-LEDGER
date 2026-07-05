@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { useTheme } from '../lib/theme.jsx'
+import { useIsMobile } from '../lib/useIsMobile'
 import { fmt } from '../utils'
 import { Plus, X, Trash2, Pencil, BookOpen, Sparkles } from 'lucide-react'
 import {
@@ -126,6 +127,7 @@ export default function ChartOfAccounts() {
   } = useStore()
   const cur = settings.currency
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const gridStroke = theme === 'dark' ? '#2a3347' : '#e2e6ee'
   const tickFill = theme === 'dark' ? '#64748b' : '#5b6478'
   const [modal, setModal] = useState(null)
@@ -214,7 +216,7 @@ export default function ChartOfAccounts() {
                 <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11, fill: tickFill }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11, fill: tickFill }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={isMobile ? 88 : 140} tick={{ fontSize: isMobile ? 10 : 11, fill: tickFill }} axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="balance" radius={[0, 4, 4, 0]}>
                     {chartData.map((d, i) => <Cell key={i} fill={TYPE_COLOR[d.type]} />)}

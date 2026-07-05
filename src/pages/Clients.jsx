@@ -5,7 +5,7 @@ import { Plus, Search, Trash2, Pencil, User, Building2, Phone, Mail, MapPin, X }
 
 function ClientModal({ client, onClose, onSave }) {
   const [form, setForm] = useState(client || {
-    name: '', company: '', email: '', phone: '', address: '', type: 'individual', notes: '',
+    name: '', company: '', email: '', phone: '', address: '', tin: '', type: 'individual', notes: '',
   })
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
   function submit() { if (form.name) onSave(form) }
@@ -61,6 +61,13 @@ function ClientModal({ client, onClose, onSave }) {
               onKeyDown={e => e.key === 'Enter' && submit()}
               placeholder="123 Rizal St, Davao City" />
           </div>
+          <div className="form-group">
+            <label className="form-label">TIN</label>
+            <input className="form-input" value={form.tin}
+              onChange={e => set('tin', e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              placeholder="000-000-000-000" />
+          </div>
           <div className="form-group form-col-full">
             <label className="form-label">Notes</label>
             <textarea className="form-textarea" value={form.notes}
@@ -87,7 +94,8 @@ export default function Clients() {
   const filtered = clients.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     (c.company || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.email || '').toLowerCase().includes(search.toLowerCase())
+    (c.email || '').toLowerCase().includes(search.toLowerCase()) ||
+    (c.tin || '').toLowerCase().includes(search.toLowerCase())
   )
 
   function getClientTotal(id) {
@@ -164,6 +172,7 @@ export default function Clients() {
                       <div>
                         <div style={{ fontWeight: 500, fontSize: 13 }}>{c.name}</div>
                         {c.company && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{c.company}</div>}
+                        {c.tin && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>TIN {c.tin}</div>}
                       </div>
                     </div>
                   </td>

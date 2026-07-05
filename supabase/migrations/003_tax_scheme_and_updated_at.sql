@@ -12,8 +12,15 @@ alter table public.accounts          add column if not exists updated_at timesta
 alter table public.clients           add column if not exists updated_at timestamptz not null default now();
 alter table public.vouchers          add column if not exists updated_at timestamptz not null default now();
 alter table public.bills             add column if not exists updated_at timestamptz not null default now();
-alter table public.voucher_templates add column if not exists updated_at timestamptz not null default now();
--- settings already has updated_at from the original schema, nothing to do there.
+alter table public.settings          add column if not exists updated_at timestamptz not null default now();
+-- voucher_templates is created fresh (with updated_at already) by migration 002
+-- if it doesn't exist yet — this line only matters if it already exists without it.
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'voucher_templates') then
+    alter table public.voucher_templates add column if not exists updated_at timestamptz not null default now();
+  end if;
+end $$;
 
 -- ============================================================
 -- settings — tax scheme columns (VAT vs Percentage Tax), replacing the
@@ -48,3 +55,6 @@ end $$;
 
 alter table public.settings alter column vat_rate set default 12;
 alter table public.settings alter column vat_rate set not null;
+
+-- Force PostgREST to pick up all of the above immediately.
+NOTIFY pgrst, 'reload schema';

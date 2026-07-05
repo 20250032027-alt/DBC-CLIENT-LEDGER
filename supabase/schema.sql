@@ -41,6 +41,7 @@ create table if not exists public.clients (
   email text,
   phone text,
   address text,
+  tin text,
   type text not null default 'individual',
   notes text,
   created_at timestamptz not null default now(),
@@ -126,6 +127,7 @@ create table if not exists public.settings (
   user_id uuid primary key default auth.uid() references auth.users(id) on delete cascade,
   company text not null default 'My Company',
   address text,
+  tin text,
   currency text not null default 'PHP',
   -- Tax scheme is a company-level setting: a business is registered with the
   -- BIR as either VAT or Non-VAT/Percentage Tax, not switchable per voucher.

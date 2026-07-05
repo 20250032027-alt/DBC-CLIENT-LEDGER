@@ -40,6 +40,10 @@ export default function Settings({ userEmail }) {
               onChange={e => setF('address', e.target.value)}
               placeholder="123 Main St, Cagayan de Oro City&#10;Tel: 0912-345-6789 · info@yourfirm.com" />
           </div>
+          <div className="form-group form-col-full">
+            <label className="form-label">TIN <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(your business's, shown on printed invoices)</span></label>
+            <input className="form-input" value={form.tin || ''} onChange={e => setF('tin', e.target.value)} placeholder="000-000-000-000" />
+          </div>
           <div className="form-group">
             <label className="form-label">Currency</label>
             <select className="form-select" value={form.currency} onChange={e => setF('currency', e.target.value)}>
