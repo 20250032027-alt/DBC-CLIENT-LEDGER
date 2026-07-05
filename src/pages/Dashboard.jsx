@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useStore } from '../store/useStore.jsx'
+import { useTheme } from '../lib/theme.jsx'
 import { fmt, fmtDate } from '../utils'
 import {
   Users, FileText, Receipt, TrendingUp, TrendingDown,
@@ -52,6 +53,9 @@ const CustomTooltip = ({ active, payload, label }) => {
 export default function Dashboard() {
   const { clients, vouchers, bills, settings, refresh, loading } = useStore()
   const cur = settings.currency
+  const { theme } = useTheme()
+  const gridStroke = theme === 'dark' ? '#2a3347' : '#e2e6ee'
+  const tickFill = theme === 'dark' ? '#64748b' : '#5b6478'
 
   // Refresh data when dashboard comes into focus (mobile-friendly)
   useEffect(() => {
@@ -160,9 +164,9 @@ export default function Dashboard() {
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e6ee" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: tickFill }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: tickFill }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#3b82f6" strokeWidth={2} fill="url(#gRev)" />
               <Area type="monotone" dataKey="expenses" name="Expenses" stroke="#ef4444" strokeWidth={2} fill="url(#gExp)" />

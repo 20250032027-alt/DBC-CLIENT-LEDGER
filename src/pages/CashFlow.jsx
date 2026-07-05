@@ -1,4 +1,5 @@
 import { useStore } from '../store/useStore.jsx'
+import { useTheme } from '../lib/theme.jsx'
 import { fmt, fmtDate } from '../utils'
 import { ArrowUpRight, ArrowDownRight, Waves } from 'lucide-react'
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
@@ -44,6 +45,9 @@ function classify(entries = []) {
 export default function CashFlow() {
   const { vouchers, bills, settings } = useStore()
   const cur = settings.currency
+  const { theme } = useTheme()
+  const gridStroke = theme === 'dark' ? '#2a3347' : '#e2e6ee'
+  const tickFill = theme === 'dark' ? '#64748b' : '#5b6478'
 
   const cashVouchers = vouchers
     .map(v => ({ ...v, delta: cashDelta(v.entries), bucket: classify(v.entries) }))
@@ -158,9 +162,9 @@ export default function CashFlow() {
         <div className="card-title" style={{ marginBottom: 12 }}>6-Month Overview</div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={months} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e6ee" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: tickFill }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: tickFill }} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
             <Legend iconSize={10} wrapperStyle={{ fontSize: 12, color: 'var(--text-2)' }} />
             <Bar dataKey="inflow" name="Inflow" fill="#22c55e" radius={[3, 3, 0, 0]} />

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { format } from 'date-fns'
 import { supabase, isSupabaseConfigured } from './lib/supabase'
+import { ThemeProvider, useTheme } from './lib/theme.jsx'
 import { StoreProvider, useStore } from './store/useStore.jsx'
 import { onToast, showToast } from './lib/toast'
 import Login from './pages/Login'
@@ -18,7 +19,7 @@ import {
   LayoutDashboard, Users, FileText, Scale, Waves,
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
-  WifiOff, RefreshCw, CloudUpload, CheckCircle2,
+  WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon,
 } from 'lucide-react'
 
 const NAV = [
@@ -132,6 +133,20 @@ function SyncPill() {
   )
 }
 
+function ThemeToggle() {
+  const { theme, toggle } = useTheme()
+  return (
+    <button
+      className="icon-btn"
+      onClick={toggle}
+      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label="Toggle dark mode"
+    >
+      {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+    </button>
+  )
+}
+
 function AppShell({ userEmail }) {
   const [page, setPage] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -212,6 +227,7 @@ function AppShell({ userEmail }) {
           </button>
           <div className="topbar-title">{PAGE_TITLES[page]}</div>
           <span className="topbar-date">{format(new Date(), 'EEEE, MMM d, yyyy')}</span>
+          <ThemeToggle />
           <SyncPill />
         </header>
 
@@ -281,7 +297,7 @@ function ConfigMissing() {
   )
 }
 
-export default function App() {
+function AppInner() {
   const [session, setSession] = useState(undefined) // undefined = checking, null = signed out
 
   useEffect(() => {
@@ -311,5 +327,13 @@ export default function App() {
       <ToastHost /><ConnectivityWatcher />
       <AppShell userEmail={session.user.email} />
     </StoreProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
   )
 }

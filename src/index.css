@@ -65,6 +65,37 @@
   --shadow-lg:  0 16px 48px rgba(16,24,40,0.14);
 }
 
+/* ── Dark theme override — same blue accent, dark navy surfaces ────── */
+[data-theme="dark"] {
+  --bg:         #0d1117;
+  --surface:    #13181f;
+  --surface2:   #1a2030;
+  --surface3:   #202838;
+
+  --border:     #252e3f;
+  --border2:    #2e3a50;
+
+  --accent-glow:   rgba(79,114,245,0.12);
+  --accent-subtle: rgba(79,114,245,0.06);
+
+  --green:      #34d399;
+  --green-dim:  rgba(52,211,153,0.12);
+  --red:        #f87171;
+  --red-dim:    rgba(248,113,113,0.12);
+  --amber:      #fbbf24;
+  --amber-dim:  rgba(251,191,36,0.12);
+  --purple:     #a78bfa;
+  --purple-dim: rgba(167,139,250,0.12);
+
+  --text-1:  #eef2f7;
+  --text-2:  #8b97b0;
+  --text-3:  #4e5c73;
+
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow:     0 4px 20px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.3);
+  --shadow-lg:  0 12px 48px rgba(0,0,0,0.6);
+}
+
 /* ── Reset ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }

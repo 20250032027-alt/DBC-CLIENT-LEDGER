@@ -4,10 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0d1117" />
+    <meta name="theme-color" content="#f4f6f9" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>Dbc Client Ledger — Accounting System</title>
+    <script>
+      // Set the theme before React mounts so there's no flash of the wrong theme.
+      (function () {
+        try {
+          var t = localStorage.getItem('dbc-ledger-theme') || 'light'
+          document.documentElement.setAttribute('data-theme', t)
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
