@@ -10,7 +10,8 @@ function printInvoice(bill, settings) {
   const subtotal = bill.subtotal ?? lines.reduce((s, l) => s + parseFloat(l.qty || 0) * parseFloat(l.rate || 0), 0)
   const tax = bill.tax ?? 0
   const total = bill.total ?? subtotal + tax
-  const taxRate = settings.vatRate ?? 12
+  const taxRate = settings.taxScheme === 'percentage' ? (settings.percentageTaxRate ?? 3) : (settings.vatRate ?? 12)
+  const taxLabel = settings.taxScheme === 'percentage' ? 'Percentage Tax' : 'VAT'
 
   // Format date nicely e.g. "June 27, 2026"
   function fmtPrint(iso) {
@@ -298,7 +299,7 @@ function printInvoice(bill, settings) {
         <span class="val">${fmt(subtotal)}</span>
       </div>
       <div class="t-row">
-        <span>VAT (${taxRate}%)</span>
+        <span>${taxLabel} (${taxRate}%)</span>
         <span class="val">${fmt(tax)}</span>
       </div>
       <div class="t-total">
@@ -401,7 +402,7 @@ function MarkPaidModal({ bill, onClose, onConfirm, cashAccounts }) {
 }
 
 // ── BillModal ────────────────────────────────────────────────────────────────
-function BillModal({ bill, onClose, onSave, clients, bills, accounts, taxRate }) {
+function BillModal({ bill, onClose, onSave, clients, bills, accounts, taxRate, taxLabel = 'VAT' }) {
   const blankLine = () => ({ id: crypto.randomUUID(), description: '', qty: 1, rate: '' })
   const [form, setForm] = useState(bill || {
     clientId: '', clientName: '',
@@ -484,7 +485,7 @@ function BillModal({ bill, onClose, onSave, clients, bills, accounts, taxRate })
           <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 20 }}>
             <input type="checkbox" id="applyTax" checked={form.applyTax}
               onChange={e => setF('applyTax', e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
-            <label htmlFor="applyTax" className="form-label" style={{ marginBottom: 0 }}>Apply {taxRate}% VAT</label>
+            <label htmlFor="applyTax" className="form-label" style={{ marginBottom: 0 }}>Apply {taxRate}% {taxLabel}</label>
           </div>
         </div>
 
@@ -596,7 +597,7 @@ function BillModal({ bill, onClose, onSave, clients, bills, accounts, taxRate })
           }}>
             {[
               { label: 'Subtotal', val: subtotal },
-              { label: `VAT (${taxRate}%)`, val: tax },
+              { label: `${taxLabel} (${taxRate}%)`, val: tax },
             ].map(r => (
               <div key={r.label} style={{
                 display: 'flex', justifyContent: 'space-between',
@@ -766,7 +767,8 @@ export default function Billing() {
           clients={clients}
           bills={bills}
           accounts={accounts}
-          taxRate={settings.vatRate}
+          taxRate={settings.taxScheme === 'percentage' ? (settings.percentageTaxRate ?? 3) : (settings.vatRate ?? 12)}
+          taxLabel={settings.taxScheme === 'percentage' ? 'Percentage Tax' : 'VAT'}
           onClose={() => setModal(null)}
           onSave={form => {
             if (modal === 'new') addBill(form)
