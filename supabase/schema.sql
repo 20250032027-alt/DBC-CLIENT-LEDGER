@@ -15,7 +15,8 @@ create table if not exists public.accounts (
   name text not null,
   type text not null check (type in ('asset', 'liability', 'equity', 'revenue', 'expense')),
   description text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 alter table public.accounts enable row level security;
@@ -42,7 +43,8 @@ create table if not exists public.clients (
   address text,
   type text not null default 'individual',
   notes text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 alter table public.clients enable row level security;
@@ -69,7 +71,8 @@ create table if not exists public.vouchers (
   memo text,
   client_id uuid references public.clients(id) on delete set null,
   entries jsonb not null default '[]'::jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 alter table public.vouchers enable row level security;
@@ -101,7 +104,8 @@ create table if not exists public.bills (
   tax numeric not null default 0,
   total numeric not null default 0,
   status text not null default 'unpaid',
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 alter table public.bills enable row level security;
@@ -121,8 +125,14 @@ create policy "bills_delete_own" on public.bills
 create table if not exists public.settings (
   user_id uuid primary key default auth.uid() references auth.users(id) on delete cascade,
   company text not null default 'My Company',
+  address text,
   currency text not null default 'PHP',
-  tax_rate numeric not null default 12
+  -- Tax scheme is a company-level setting: a business is registered with the
+  -- BIR as either VAT or Non-VAT/Percentage Tax, not switchable per voucher.
+  tax_scheme text not null default 'vat' check (tax_scheme in ('vat', 'percentage')),
+  vat_rate numeric not null default 12,
+  percentage_tax_rate numeric not null default 3,
+  updated_at timestamptz not null default now()
 );
 
 alter table public.settings enable row level security;
@@ -146,7 +156,8 @@ create table if not exists public.voucher_templates (
   type text not null default 'general',
   memo text,
   entries jsonb not null default '[]'::jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 alter table public.voucher_templates enable row level security;

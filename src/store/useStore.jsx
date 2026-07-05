@@ -26,7 +26,7 @@ function liveRows(table) {
 
 const StoreContext = createContext(null)
 
-export function StoreProvider({ children, userId }) {
+export function StoreProvider({ children, userId, initialCompany }) {
   const [clients, setClients] = useState([])
   const [vouchers, setVouchers] = useState([])
   const [bills, setBills] = useState([])
@@ -77,7 +77,10 @@ export function StoreProvider({ children, userId }) {
       // collides with the real row.
       const existingSettings = await db.settings.get(userId)
       if (!existingSettings) {
-        await queueWrite('settings', 'insert', { userId, ...defaultSettings }, { silent: true })
+        const seedSettings = initialCompany
+          ? { ...defaultSettings, company: initialCompany }
+          : defaultSettings
+        await queueWrite('settings', 'insert', { userId, ...seedSettings }, { silent: true })
       }
 
       await refreshFromLocal()

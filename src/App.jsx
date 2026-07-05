@@ -307,7 +307,7 @@ export default function App() {
   if (!session) return <><ToastHost /><ConnectivityWatcher /><Login /></>
 
   return (
-    <StoreProvider userId={session.user.id}>
+    <StoreProvider userId={session.user.id} initialCompany={session.user.user_metadata?.company_name}>
       <ToastHost /><ConnectivityWatcher />
       <AppShell userEmail={session.user.email} />
     </StoreProvider>
