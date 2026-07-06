@@ -10,9 +10,9 @@ export default function Settings({ userEmail }) {
 
   function setF(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
-  // Resizes to a max width before storing, since the logo is saved as a data
-  // URL directly in the settings row (no separate file storage in this app) —
-  // keeping it small matters for sync payload size.
+  // Persists immediately rather than waiting for the "Save Settings" button
+  // below — that button lives in a different card, and it was too easy to
+  // upload a logo, see the preview, and navigate away thinking it was saved.
   function handleLogoUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -27,12 +27,23 @@ export default function Settings({ userEmail }) {
         canvas.height = Math.round(img.height * scale)
         const ctx = canvas.getContext('2d')
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        setF('logo', canvas.toDataURL('image/png'))
+        const dataUrl = canvas.toDataURL('image/png')
+        const updated = { ...form, logo: dataUrl }
+        setForm(updated)
+        updateSettings(updated)
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
       }
       img.src = ev.target.result
     }
     reader.readAsDataURL(file)
     e.target.value = '' // allow re-selecting the same file later
+  }
+
+  function removeLogo() {
+    const updated = { ...form, logo: '' }
+    setForm(updated)
+    updateSettings(updated)
   }
 
   function save() {
@@ -80,8 +91,9 @@ export default function Settings({ userEmail }) {
                 <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: 'none' }} />
               </label>
               {form.logo && (
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setF('logo', '')}>Remove</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={removeLogo}>Remove</button>
               )}
+              {saved && <span style={{ fontSize: 11, color: 'var(--green)' }}>Saved</span>}
             </div>
           </div>
           <div className="form-group form-col-full">
