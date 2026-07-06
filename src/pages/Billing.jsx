@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate } from '../utils'
+import { fmt, fmtDate, nextBillNumber } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, Receipt, CheckCircle, Clock, AlertTriangle, Printer } from 'lucide-react'
 
 // ── Print Invoice ────────────────────────────────────────────────────────────
@@ -467,6 +467,11 @@ function BillModal({ bill, onClose, onSave, clients, bills, accounts, taxRate, t
             </select>
           </div>
           <div className="form-group">
+            <label className="form-label">Invoice #</label>
+            <input className="form-input" value={form.number || '(assigned on save)'} disabled
+              style={{ opacity: 0.7, fontFamily: 'var(--mono)' }} />
+          </div>
+          <div className="form-group">
             <label className="form-label">Invoice Date</label>
             <input className="form-input" type="date" value={form.date} onChange={e => setF('date', e.target.value)} />
           </div>
@@ -775,8 +780,9 @@ export default function Billing() {
           taxLabel={settings.taxScheme === 'percentage' ? 'Percentage Tax' : 'VAT'}
           onClose={() => setModal(null)}
           onSave={form => {
-            if (modal === 'new') addBill(form)
-            else updateBill(modal.id, form)
+            const withNumber = form.number ? form : { ...form, number: nextBillNumber(form.date, bills) }
+            if (modal === 'new') addBill(withNumber)
+            else updateBill(modal.id, withNumber)
             setModal(null)
           }}
         />

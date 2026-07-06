@@ -2,11 +2,13 @@ import { useState, useEffect, createContext, useContext, useCallback } from 'rea
 import { db } from '../lib/db'
 import { queueWrite, initSync, stopSync, onSyncStatusChange, pendingCount, syncNow } from '../lib/sync'
 import { DEFAULT_ACCOUNTS } from './defaultAccounts'
+import { nextVoucherNumber, nextBillNumber } from '../utils'
 
 const defaultSettings = {
   company: 'My Company',
   address: '',
   tin: '',
+  logo: '',
   currency: 'PHP',
   // Tax scheme is a company-level setting, not a per-voucher choice — under
   // BIR rules a business is registered as either VAT or Non-VAT/Percentage
@@ -57,6 +59,32 @@ export function StoreProvider({ children, userId, initialCompany }) {
     setPending(await pendingCount())
   }, [userId])
 
+  // One-time fix for records saved before voucher/bill auto-numbering
+  // existed: `number` is NOT NULL in the database, so any record saved with
+  // no number was silently failing to sync (and retrying forever). This
+  // assigns one so those old records can finally reach the cloud.
+  async function backfillMissingNumbers() {
+    const allV = await db.vouchers.where('userId').equals(userId).toArray()
+    const missingV = allV.filter(v => !v.number && !v._deleted)
+      .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+    let pool = allV.filter(v => v.number)
+    for (const v of missingV) {
+      const number = nextVoucherNumber(v.type, v.date || v.createdAt, pool)
+      pool = [...pool, { ...v, number }]
+      await queueWrite('vouchers', 'update', { ...v, number }, { silent: true })
+    }
+
+    const allB = await db.bills.where('userId').equals(userId).toArray()
+    const missingB = allB.filter(b => !b.number && !b._deleted)
+      .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+    let poolB = allB.filter(b => b.number)
+    for (const b of missingB) {
+      const number = nextBillNumber(b.date || b.createdAt, poolB)
+      poolB = [...poolB, { ...b, number }]
+      await queueWrite('bills', 'update', { ...b, number }, { silent: true })
+    }
+  }
+
   useEffect(() => {
     if (!userId) return
     let cancelled = false
@@ -69,6 +97,7 @@ export function StoreProvider({ children, userId, initialCompany }) {
 
       initSync(userId)
       if (navigator.onLine) await syncNow()
+      await backfillMissingNumbers()
 
       // Only bootstrap default settings if there's genuinely no row for this
       // user anywhere — checked AFTER pulling from the server, not before.

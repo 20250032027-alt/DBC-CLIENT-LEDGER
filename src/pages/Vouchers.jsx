@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, voucherTotals } from '../utils'
-import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator } from 'lucide-react'
+import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber } from '../utils'
+import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer } from 'lucide-react'
 
 const TYPES = ['sales', 'general', 'cash receipt', 'cash disbursement', 'expense', 'adjustment']
 
@@ -639,9 +639,193 @@ function Row({ label, val, color, bold }) {
   )
 }
 
-// Finds the closest matching Chart of Accounts name (case-insensitive), or
-// falls back to the preferred label so the entry line is still usable —
-// AccountAutocomplete will flag it with a warning if it's not really in the COA.
+// ── Print Voucher — matches the client's existing paper Cash Voucher form ──
+function printVoucher(voucher, settings, accounts = [], clients = []) {
+  const w = window.open('', '_blank', 'width=900,height=700')
+  const entries = voucher.entries || []
+  const { debit, credit } = voucherTotals(entries)
+  const client = clients.find(c => c.id === voucher.clientId)
+  const title = VOUCHER_TITLE[voucher.type] || 'VOUCHER'
+
+  function accountCode(name) {
+    const match = accounts.find(a => a.name.trim().toLowerCase() === (name || '').trim().toLowerCase())
+    return match ? match.code : ''
+  }
+
+  function fmtPrint(iso) {
+    if (!iso) return '—'
+    const d = new Date(iso + 'T00:00:00')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${mm}/${dd}/${d.getFullYear()}`
+  }
+
+  const rowsHtml = entries.map(e => `
+      <tr>
+        <td>${accountCode(e.account) || ''}</td>
+        <td>${e.account || ''}</td>
+        <td class="r">${parseFloat(e.debit || 0) > 0 ? fmt(parseFloat(e.debit), settings.currency) : ''}</td>
+        <td class="r">${parseFloat(e.credit || 0) > 0 ? fmt(parseFloat(e.credit), settings.currency) : ''}</td>
+        <td>${e.description || ''}</td>
+      </tr>`).join('')
+
+  w.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>${title} ${voucher.number || ''}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+      font-size: 12.5px;
+      color: #111827;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page { max-width: 760px; margin: 0 auto; padding: 48px 56px 64px; }
+
+    /* ── Header: logo/company left, contact info right ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      gap: 24px;
+    }
+    .firm-block { display: flex; align-items: center; gap: 12px; }
+    .firm-logo { max-height: 52px; max-width: 160px; object-fit: contain; }
+    .firm-name { font-size: 18px; font-weight: 800; color: #111827; letter-spacing: -0.2px; }
+    .firm-contact { text-align: right; font-size: 11px; color: #4b5563; line-height: 1.7; }
+
+    .title {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin: 20px 0 26px;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: flex-end;
+      font-size: 12.5px;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+
+    .payee-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 14px 0 18px;
+      font-size: 12.5px;
+    }
+    .payee-label { font-weight: 600; margin-right: 10px; }
+    .payee-line { flex: 1; border-bottom: 1px solid #111827; min-height: 18px; margin: 0 16px; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 22px; }
+    th, td { border: 1px solid #111827; padding: 5px 8px; font-size: 12px; }
+    th { background: #f3f4f6; font-weight: 700; text-align: left; }
+    td.r, th.r { text-align: right; }
+    tbody tr td { height: 22px; }
+    tfoot td { font-weight: 700; }
+
+    .explanation-label { color: #b45309; font-weight: 700; font-size: 12px; margin-bottom: 24px; }
+
+    .sign-row { display: flex; justify-content: space-between; margin-top: 10px; }
+    .sign-labels { display: flex; gap: 40px; font-size: 12px; color: #374151; margin-bottom: 6px; }
+    .sign-block { display: flex; gap: 40px; }
+    .sign-col { min-width: 140px; }
+    .sign-line { border-bottom: 1px solid #111827; height: 30px; }
+    .sign-caption { font-size: 11px; color: #4b5563; margin-top: 3px; }
+
+    @media print { .no-print { display: none; } }
+    .no-print { text-align: center; margin: 24px 0; }
+    .no-print button {
+      font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+      padding: 8px 20px; border-radius: 6px; border: none;
+      background: #4f72f5; color: #fff; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="firm-block">
+        ${settings.logo ? `<img class="firm-logo" src="${settings.logo}" />` : ''}
+        <div class="firm-name">${settings.company || 'Your Company'}</div>
+      </div>
+      <div class="firm-contact">
+        ${(settings.address || '').replace(/\n/g, '<br>')}
+        ${settings.tin ? `<br>TIN: ${settings.tin}` : ''}
+      </div>
+    </div>
+
+    <div class="title">${title}</div>
+
+    <div class="meta-row">${voucher.number || '—'}</div>
+
+    <div class="payee-row">
+      <span class="payee-label">PAYEE</span>
+      <span class="payee-line">${client?.name || ''}</span>
+      <span>${fmtPrint(voucher.date)}</span>
+    </div>
+
+    <!-- Entries table -->
+    <table>
+      <thead>
+        <tr>
+          <th style="width:12%">Account No</th>
+          <th style="width:30%">Account</th>
+          <th class="r" style="width:18%">Debit</th>
+          <th class="r" style="width:18%">Credit</th>
+          <th style="width:22%">Description</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2"></td>
+          <td class="r">${fmt(debit, settings.currency)}</td>
+          <td class="r">${fmt(credit, settings.currency)}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div class="explanation-label">Explanation</div>
+    <div style="font-size:12.5px; margin-bottom:36px; min-height:18px;">${voucher.memo || ''}</div>
+
+    <!-- Signatures -->
+    <div class="sign-labels"><span>Prepared by:</span><span>Noted By:</span></div>
+    <div class="sign-block">
+      <div class="sign-col">
+        <div class="sign-line"></div>
+        <div class="sign-caption">Finance</div>
+      </div>
+      <div class="sign-col" style="flex:1">
+        <div class="sign-line"></div>
+        <div class="sign-caption">Manager &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Name over printed name/Date</div>
+      </div>
+    </div>
+
+    <div class="no-print"><button onclick="window.print()">Print</button></div>
+  </div>
+  <script>window.onload = () => { window.print(); }</script>
+</body>
+</html>`)
+  w.document.close()
+}
+
+
 function findAccountName(preferred, accounts) {
   const match = accounts.find(a => a.name.trim().toLowerCase() === preferred.toLowerCase())
   return match ? match.name : preferred
@@ -848,6 +1032,11 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
         <div className="modal-header">
           <span className="modal-title">{voucher ? 'Edit Voucher' : 'New Voucher'}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {voucher && (
+              <button className="icon-btn" title="Print Voucher" onClick={() => printVoucher(voucher, settings, accounts, clients)}>
+                <Printer size={16} />
+              </button>
+            )}
             <button
               className="icon-btn"
               onClick={() => setShowCalc(v => !v)}
@@ -870,6 +1059,11 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
             <select className="form-select" value={form.type} onChange={e => setF('type', e.target.value)}>
               {TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
             </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Voucher #</label>
+            <input className="form-input" value={form.number || '(assigned on save)'} disabled
+              style={{ opacity: 0.7, fontFamily: 'var(--mono)' }} />
           </div>
           <div className="form-group">
             <label className="form-label">Date</label>
@@ -1253,6 +1447,7 @@ export default function Vouchers() {
                       <td className="td-mono" style={{ textAlign: 'right' }}>{fmt(credit, settings.currency)}</td>
                       <td>
                         <div className="row-actions">
+                          <button className="icon-btn" title="Print Voucher" onClick={() => printVoucher(v, settings, accounts, clients)}><Printer size={14} /></button>
                           <button className="icon-btn" onClick={() => setModal(v)}><Pencil size={14} /></button>
                           <button className="icon-btn" onClick={() => deleteVoucher(v.id)} style={{ color: 'var(--red)' }}><Trash2 size={14} /></button>
                         </div>
@@ -1298,8 +1493,9 @@ export default function Vouchers() {
           onDeleteTemplate={deleteTemplate}
           onClose={() => setModal(null)}
           onSave={form => {
-            if (modal === 'new') addVoucher(form)
-            else updateVoucher(modal.id, form)
+            const withNumber = form.number ? form : { ...form, number: nextVoucherNumber(form.type, form.date, vouchers) }
+            if (modal === 'new') addVoucher(withNumber)
+            else updateVoucher(modal.id, withNumber)
             setModal(null)
           }}
         />

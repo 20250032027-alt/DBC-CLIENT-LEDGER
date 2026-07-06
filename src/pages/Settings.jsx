@@ -10,6 +10,31 @@ export default function Settings({ userEmail }) {
 
   function setF(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
+  // Resizes to a max width before storing, since the logo is saved as a data
+  // URL directly in the settings row (no separate file storage in this app) —
+  // keeping it small matters for sync payload size.
+  function handleLogoUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        const maxW = 320
+        const scale = Math.min(1, maxW / img.width)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        setF('logo', canvas.toDataURL('image/png'))
+      }
+      img.src = ev.target.result
+    }
+    reader.readAsDataURL(file)
+    e.target.value = '' // allow re-selecting the same file later
+  }
+
   function save() {
     updateSettings(form)
     setSaved(true)
@@ -39,6 +64,25 @@ export default function Settings({ userEmail }) {
             <textarea className="form-textarea" rows={3} value={form.address || ''}
               onChange={e => setF('address', e.target.value)}
               placeholder="123 Main St, Cagayan de Oro City&#10;Tel: 0912-345-6789 · info@yourfirm.com" />
+          </div>
+          <div className="form-group form-col-full">
+            <label className="form-label">Business Logo <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(shown on printed vouchers &amp; invoices)</span></label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {form.logo ? (
+                <img src={form.logo} alt="Logo" style={{ height: 44, maxWidth: 140, objectFit: 'contain', background: 'var(--surface2)', borderRadius: 6, padding: 4, border: '1px solid var(--border)' }} />
+              ) : (
+                <div style={{ height: 44, width: 100, background: 'var(--surface2)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text-3)', border: '1px solid var(--border)' }}>
+                  No logo
+                </div>
+              )}
+              <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>
+                Upload
+                <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: 'none' }} />
+              </label>
+              {form.logo && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setF('logo', '')}>Remove</button>
+              )}
+            </div>
           </div>
           <div className="form-group form-col-full">
             <label className="form-label">TIN <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(your business's, shown on printed invoices)</span></label>
