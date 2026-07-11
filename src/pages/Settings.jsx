@@ -1,12 +1,26 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { supabase } from '../lib/supabase'
-import { Save, LogOut, Cloud } from 'lucide-react'
+import { getInstallState, promptInstall } from '../lib/installPrompt'
+import { Save, LogOut, Cloud, Smartphone, X } from 'lucide-react'
 
 export default function Settings({ userEmail }) {
   const { settings, updateSettings, deleteAllData } = useStore()
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
+
+  const [installState, setInstallState] = useState('installed')
+  const [showIOSHelp, setShowIOSHelp] = useState(false)
+  useEffect(() => {
+    setInstallState(getInstallState())
+    const onChange = () => setInstallState(getInstallState())
+    window.addEventListener('dbc-ledger-install-available', onChange)
+    return () => window.removeEventListener('dbc-ledger-install-available', onChange)
+  }, [])
+  async function handleInstall() {
+    if (installState === 'native') await promptInstall()
+    else setShowIOSHelp(true)
+  }
 
   function setF(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
@@ -166,11 +180,72 @@ export default function Settings({ userEmail }) {
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title" style={{ marginBottom: 12 }}>Install App</div>
+        {installState === 'installed' ? (
+          <div style={{ fontSize: 13, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Smartphone size={14} /> DBC Client Ledger is already installed on this device.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
+              Install DBC Client Ledger on your phone or computer for quicker access and full offline use.
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={handleInstall}>
+              <Smartphone size={14} /> Install App
+            </button>
+          </>
+        )}
+
+        {showIOSHelp && (
+          <div className="modal-backdrop" onClick={() => setShowIOSHelp(false)}>
+            <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <span className="modal-title">Add to Home Screen</span>
+                <button className="icon-btn" onClick={() => setShowIOSHelp(false)}><X size={18} /></button>
+              </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--text-2)' }}>
+                {installState === 'ios' ? (
+                  <ol style={{ paddingLeft: 18 }}>
+                    <li>Tap the <strong>Share</strong> icon in Safari's toolbar.</li>
+                    <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+                    <li>Tap <strong>Add</strong> in the top-right corner.</li>
+                  </ol>
+                ) : (
+                  <ol style={{ paddingLeft: 18 }}>
+                    <li>Open your browser's menu (usually ⋮ or ≡ in the toolbar).</li>
+                    <li>Look for <strong>Add to Home Screen</strong> or <strong>Install app</strong>.</li>
+                    <li>Confirm to add it.</li>
+                  </ol>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-primary" onClick={() => setShowIOSHelp(false)}>Got it</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title" style={{ marginBottom: 12 }}>Data</div>
         <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
           Your data is synced to your Supabase cloud database, so it's backed up and
           available from any device you sign into.
         </div>
+
+        <div className="form-group" style={{ marginBottom: 14, maxWidth: 320 }}>
+          <label className="form-label">Deletion Password <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional)</span></label>
+          <input className="form-input" type="password" value={form.deletePassword || ''}
+            onChange={e => setF('deletePassword', e.target.value)}
+            placeholder="Leave blank to not require one" />
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+            If set, deleting a voucher will ask for this password in addition to typing
+            the voucher number — an extra check against accidental deletion. This isn't
+            encrypted, so treat it as a speed bump rather than real security. Click "Save
+            Settings" above to apply changes here.
+          </div>
+        </div>
+
         <button className="btn btn-danger btn-sm" onClick={() => {
           if (confirm('Delete all accounts, clients, vouchers and invoices? This cannot be undone.')) {
             deleteAllData()

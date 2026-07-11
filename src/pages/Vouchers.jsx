@@ -79,6 +79,204 @@ async function exportVouchersToExcel(vouchers, clients) {
   XLSX.writeFile(wb, `dbc-client-ledger-vouchers-${dateStr}.xlsx`)
 }
 
+// ── Bulk import template — Cash Receipts & Disbursements ────────────────
+async function downloadVoucherImportTemplate(accounts) {
+  const XLSX = await import('xlsx')
+
+  const sampleRows = [
+    {
+      Date: new Date().toISOString().slice(0, 10),
+      Type: 'Cash Receipt',
+      Payee: 'Juan Dela Cruz',
+      TIN: '000-000-000-000',
+      Address: '123 Rizal St, Davao City',
+      'Cash/Bank Account': 'Cash',
+      Account: 'Sales Revenue',
+      Amount: 5000,
+      Reference: 'OR-001',
+      Description: 'Sample row — replace with your own data, then delete this line',
+    },
+  ]
+  const wb = XLSX.utils.book_new()
+  const ws = XLSX.utils.json_to_sheet(sampleRows)
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 28 },
+    { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 34 },
+  ]
+  XLSX.utils.book_append_sheet(wb, ws, 'Vouchers')
+
+  const instructions = [
+    { Field: 'Date', Notes: 'Format: YYYY-MM-DD (e.g. 2026-07-11)' },
+    { Field: 'Type', Notes: 'Must be exactly "Cash Receipt" or "Cash Disbursement"' },
+    { Field: 'Payee', Notes: 'Name of the person or entity being paid / received from' },
+    { Field: 'TIN', Notes: "Optional — payee's BIR Tax Identification Number" },
+    { Field: 'Address', Notes: "Optional — payee's address" },
+    { Field: 'Cash/Bank Account', Notes: 'Must match an account in your Chart of Accounts, e.g. "Cash" or "Bank"' },
+    { Field: 'Account', Notes: 'The other side of the entry — must match an account in your Chart of Accounts' },
+    { Field: 'Amount', Notes: 'Number only, no currency symbol or commas' },
+    { Field: 'Reference', Notes: 'Optional — e.g. OR number or check number' },
+    { Field: 'Description', Notes: 'Optional line-item description' },
+    { Field: '', Notes: '' },
+    { Field: 'Your Chart of Accounts', Notes: accounts.map(a => a.name).join(', ') },
+  ]
+  const wsInfo = XLSX.utils.json_to_sheet(instructions)
+  wsInfo['!cols'] = [{ wch: 22 }, { wch: 100 }]
+  XLSX.utils.book_append_sheet(wb, wsInfo, 'Instructions')
+
+  XLSX.writeFile(wb, 'dbc-client-ledger-voucher-import-template.xlsx')
+}
+
+// Parses an uploaded template into ready-to-save voucher records, or a list
+// of per-row errors for anything that doesn't check out (bad type, unknown
+// account, missing amount, etc.) — nothing gets imported until the person
+// confirms in the modal.
+function parseVoucherImportRows(json, accounts, existingVouchers) {
+  const valid = []
+  const errors = []
+  let pool = existingVouchers.filter(v => v.number)
+
+  json.forEach((row, i) => {
+    const rowNum = i + 2 // +1 for header row, +1 for 1-based row numbers
+    const typeRaw = String(row.Type || '').trim().toLowerCase()
+    const type = typeRaw === 'cash receipt' ? 'cash receipt' : typeRaw === 'cash disbursement' ? 'cash disbursement' : null
+    const date = String(row.Date || '').trim()
+    const account = String(row.Account || '').trim()
+    const cashAccount = String(row['Cash/Bank Account'] || 'Cash').trim()
+    const amount = parseFloat(row.Amount)
+
+    const rowErrors = []
+    if (!type) rowErrors.push('Type must be exactly "Cash Receipt" or "Cash Disbursement"')
+    if (!date) rowErrors.push('Date is required')
+    if (!account) rowErrors.push('Account is required')
+    else if (!accounts.find(a => a.name.trim().toLowerCase() === account.toLowerCase())) rowErrors.push(`Account "${account}" not found in Chart of Accounts`)
+    if (!accounts.find(a => a.name.trim().toLowerCase() === cashAccount.toLowerCase())) rowErrors.push(`Cash/Bank Account "${cashAccount}" not found in Chart of Accounts`)
+    if (!amount || amount <= 0) rowErrors.push('Amount must be a positive number')
+
+    if (rowErrors.length) {
+      errors.push({ row: rowNum, messages: rowErrors })
+      return
+    }
+
+    const number = nextVoucherNumber(type, date, pool)
+    pool = [...pool, { type, date, number }]
+
+    const isReceipt = type === 'cash receipt'
+    const rawEntries = isReceipt
+      ? [
+          { account: cashAccount, debit: String(amount), credit: '' },
+          { account, debit: '', credit: String(amount) },
+        ]
+      : [
+          { account, debit: String(amount), credit: '' },
+          { account: cashAccount, debit: '', credit: String(amount) },
+        ]
+
+    valid.push({
+      type, date, number,
+      reference: String(row.Reference || ''),
+      memo: String(row.Description || ''),
+      payee: String(row.Payee || ''),
+      payeeTin: String(row.TIN || ''),
+      payeeAddress: String(row.Address || ''),
+      clientId: '',
+      entries: rawEntries.map(e => ({ ...e, description: String(row.Description || ''), id: crypto.randomUUID() })),
+    })
+  })
+
+  return { valid, errors }
+}
+
+function ImportVouchersModal({ accounts, vouchers, onImport, onClose }) {
+  const [results, setResults] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const [done, setDone] = useState(null)
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const XLSX = await import('xlsx')
+    const buf = await file.arrayBuffer()
+    const wb = XLSX.read(buf, { type: 'array' })
+    const sheet = wb.Sheets[wb.SheetNames[0]]
+    const json = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+    setResults(parseVoucherImportRows(json, accounts, vouchers))
+    e.target.value = ''
+  }
+
+  async function handleImport() {
+    if (!results?.valid?.length) return
+    setImporting(true)
+    for (const v of results.valid) await onImport(v)
+    setImporting(false)
+    setDone(results.valid.length)
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 560 }}>
+        <div className="modal-header">
+          <span className="modal-title">Bulk Import — Cash Receipts &amp; Disbursements</span>
+          <button className="icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        {done !== null ? (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <CheckCircle size={32} style={{ color: 'var(--green)', marginBottom: 10 }} />
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{done} voucher{done !== 1 ? 's' : ''} imported</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+              Download the template, fill in one row per transaction, then upload it back here.
+              Each row becomes a balanced two-line Cash Receipt or Cash Disbursement voucher automatically.
+            </div>
+
+            <button className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }} onClick={() => downloadVoucherImportTemplate(accounts)}>
+              <Download size={13} /> Download Template
+            </button>
+
+            <div className="form-group form-col-full" style={{ marginBottom: 4 }}>
+              <label className="form-label">Upload filled-in template</label>
+              <input type="file" accept=".xlsx,.xls" className="form-input" onChange={handleFile} />
+            </div>
+
+            {results && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 13, marginBottom: 8 }}>
+                  <strong style={{ color: 'var(--green)' }}>{results.valid.length} ready to import</strong>
+                  {results.errors.length > 0 && <span style={{ color: 'var(--red)' }}> · {results.errors.length} skipped</span>}
+                </div>
+                {results.errors.length > 0 && (
+                  <div style={{ maxHeight: 160, overflowY: 'auto', fontSize: 11.5, background: 'var(--surface2)', borderRadius: 'var(--radius-sm)', padding: 10, marginBottom: 12 }}>
+                    {results.errors.map(e => (
+                      <div key={e.row} style={{ marginBottom: 4 }}>
+                        <strong>Row {e.row}:</strong> {e.messages.join('; ')}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="modal-footer">
+          {done !== null ? (
+            <button className="btn btn-primary" onClick={onClose}>Done</button>
+          ) : (
+            <>
+              <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" disabled={!results?.valid?.length || importing} onClick={handleImport}>
+                {importing ? 'Importing…' : `Import ${results?.valid?.length || 0} Voucher${results?.valid?.length === 1 ? '' : 's'}`}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AccountAutocomplete({ value, onChange, onFocus, accounts, placeholder, style }) {
   const [open, setOpen] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
@@ -775,9 +973,14 @@ function printVoucher(voucher, settings, accounts = [], clients = []) {
 
     <div class="payee-row">
       <span class="payee-label">PAYEE</span>
-      <span class="payee-line">${client?.name || ''}</span>
+      <span class="payee-line">${voucher.payee || client?.name || ''}</span>
       <span>${fmtPrint(voucher.date)}</span>
     </div>
+    ${(voucher.payeeTin || voucher.payeeAddress) ? `
+    <div style="display:flex; gap:24px; font-size:11px; color:#4b5563; margin:-10px 0 18px;">
+      ${voucher.payeeTin ? `<span>TIN: ${voucher.payeeTin}</span>` : ''}
+      ${voucher.payeeAddress ? `<span>${voucher.payeeAddress}</span>` : ''}
+    </div>` : ''}
 
     <!-- Entries table -->
     <table>
@@ -948,11 +1151,82 @@ function SalesTaxPanel({ settings, accounts, onAddLines }) {
   )
 }
 
+// ── Delete confirmation: type the voucher number, plus a password if one's configured ──
+function DeleteVoucherModal({ voucher, settings, onClose, onConfirm }) {
+  const [typed, setTyped] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const requiresPassword = !!(settings?.deletePassword)
+
+  function handleConfirm() {
+    if (typed.trim() !== voucher.number) {
+      setError(`Type the voucher number exactly as shown: ${voucher.number}`)
+      return
+    }
+    if (requiresPassword && password !== settings.deletePassword) {
+      setError('Incorrect password.')
+      return
+    }
+    onConfirm()
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 420 }} onKeyDown={e => e.key === 'Escape' && onClose()}>
+        <div className="modal-header">
+          <span className="modal-title">Delete Voucher</span>
+          <button className="icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div style={{ fontSize: 13.5, color: 'var(--text-2)', marginBottom: 16, lineHeight: 1.6 }}>
+          You are about to delete <strong style={{ color: 'var(--red)' }}>{VOUCHER_TITLE[voucher.type] || 'Voucher'} {voucher.number}</strong>.
+          This cannot be undone.
+        </div>
+
+        <div className="form-group" style={{ marginBottom: requiresPassword ? 12 : 0 }}>
+          <label className="form-label">Type <span className="td-mono">{voucher.number}</span> to confirm</label>
+          <input
+            autoFocus
+            className="form-input"
+            value={typed}
+            onChange={e => { setTyped(e.target.value); setError('') }}
+            onKeyDown={e => e.key === 'Enter' && !requiresPassword && handleConfirm()}
+            placeholder={voucher.number}
+          />
+        </div>
+
+        {requiresPassword && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Password</label>
+            <input
+              type="password"
+              className="form-input"
+              value={password}
+              onChange={e => { setPassword(e.target.value); setError('') }}
+              onKeyDown={e => e.key === 'Enter' && handleConfirm()}
+            />
+          </div>
+        )}
+
+        {error && (
+          <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 10 }}>{error}</div>
+        )}
+
+        <div className="modal-footer" style={{ marginTop: 20 }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-danger" onClick={handleConfirm}>Delete Voucher</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, settings }) {
   const blankEntry = () => ({ account: '', description: '', debit: '', credit: '', id: crypto.randomUUID() })
   const [form, setForm] = useState(voucher ? { ...voucher, memo: voucher.memo || '' } : {
     type: 'general', date: new Date().toISOString().slice(0, 10),
-    reference: '', memo: '', clientId: '', entries: [blankEntry(), blankEntry()],
+    reference: '', memo: '', clientId: '', payee: '', payeeTin: '', payeeAddress: '',
+    entries: [blankEntry(), blankEntry()],
   })
   const [lastFocused, setLastFocused] = useState({ index: 0, side: 'debit' })
 
@@ -1075,11 +1349,36 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
           </div>
           <div className="form-group">
             <label className="form-label">Client (optional)</label>
-            <select className="form-select" value={form.clientId} onChange={e => setF('clientId', e.target.value)}>
+            <select className="form-select" value={form.clientId} onChange={e => {
+              const id = e.target.value
+              const client = clients.find(c => c.id === id)
+              setForm(f => ({
+                ...f,
+                clientId: id,
+                // Auto-fill payee from the client, but don't clobber something the user already typed
+                payee: (client && !f.payee) ? client.name : f.payee,
+              }))
+            }}>
               <option value="">— None —</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          <div className="form-group form-col-full">
+            <label className="form-label">Payee <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(shown on the printed voucher — doesn't need to be a saved client)</span></label>
+            <input className="form-input" value={form.payee} onChange={e => setF('payee', e.target.value)} placeholder="Name of person or entity being paid / received from" />
+          </div>
+          {(form.type === 'cash receipt' || form.type === 'cash disbursement') && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Payee TIN</label>
+                <input className="form-input" value={form.payeeTin} onChange={e => setF('payeeTin', e.target.value)} placeholder="000-000-000-000" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Payee Address</label>
+                <input className="form-input" value={form.payeeAddress} onChange={e => setF('payeeAddress', e.target.value)} placeholder="123 Rizal St, Davao City" />
+              </div>
+            </>
+          )}
           <div className="form-group form-col-full">
             <label className="form-label">Memo</label>
             <MemoAutocomplete
@@ -1295,6 +1594,8 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
 export default function Vouchers() {
   const { vouchers, addVoucher, updateVoucher, deleteVoucher, clients, accounts, templates, addTemplate, deleteTemplate, settings } = useStore()
   const [modal, setModal] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [showImport, setShowImport] = useState(false)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [exporting, setExporting] = useState(false)
@@ -1337,6 +1638,9 @@ export default function Vouchers() {
           <div className="page-sub">{vouchers.length} journal entr{vouchers.length !== 1 ? 'ies' : 'y'}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost" onClick={() => setShowImport(true)}>
+            <FileText size={15} /> Bulk Import
+          </button>
           <button
             className="btn btn-ghost"
             disabled={filtered.length === 0 || exporting}
@@ -1449,7 +1753,7 @@ export default function Vouchers() {
                         <div className="row-actions">
                           <button className="icon-btn" title="Print Voucher" onClick={() => printVoucher(v, settings, accounts, clients)}><Printer size={14} /></button>
                           <button className="icon-btn" onClick={() => setModal(v)}><Pencil size={14} /></button>
-                          <button className="icon-btn" onClick={() => deleteVoucher(v.id)} style={{ color: 'var(--red)' }}><Trash2 size={14} /></button>
+                          <button className="icon-btn" onClick={() => setDeleteTarget(v)} style={{ color: 'var(--red)' }}><Trash2 size={14} /></button>
                         </div>
                       </td>
                     </tr>
@@ -1498,6 +1802,24 @@ export default function Vouchers() {
             else updateVoucher(modal.id, withNumber)
             setModal(null)
           }}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteVoucherModal
+          voucher={deleteTarget}
+          settings={settings}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => { deleteVoucher(deleteTarget.id); setDeleteTarget(null) }}
+        />
+      )}
+
+      {showImport && (
+        <ImportVouchersModal
+          accounts={accounts}
+          vouchers={vouchers}
+          onImport={addVoucher}
+          onClose={() => setShowImport(false)}
         />
       )}
     </div>

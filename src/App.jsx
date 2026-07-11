@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { format } from 'date-fns'
 import { supabase, isSupabaseConfigured } from './lib/supabase'
 import { ThemeProvider, useTheme } from './lib/theme.jsx'
+import { getInstallState, promptInstall } from './lib/installPrompt'
 import { StoreProvider, useStore } from './store/useStore.jsx'
 import { onToast, showToast } from './lib/toast'
 import Login from './pages/Login'
@@ -19,7 +20,7 @@ import {
   LayoutDashboard, Users, FileText, Scale, Waves,
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
-  WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon,
+  WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone,
 } from 'lucide-react'
 
 const NAV = [
@@ -147,6 +148,80 @@ function ThemeToggle() {
   )
 }
 
+function InstallBanner() {
+  const [state, setState] = useState('installed') // 'installed' | 'native' | 'ios' | 'manual'
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem('dbc-ledger-install-dismissed') === '1')
+  const [showIOSHelp, setShowIOSHelp] = useState(false)
+
+  useEffect(() => {
+    setState(getInstallState())
+    const onChange = () => setState(getInstallState())
+    window.addEventListener('dbc-ledger-install-available', onChange)
+    return () => window.removeEventListener('dbc-ledger-install-available', onChange)
+  }, [])
+
+  function dismiss() {
+    setDismissed(true)
+    localStorage.setItem('dbc-ledger-install-dismissed', '1')
+  }
+
+  async function handleInstall() {
+    if (state === 'native') {
+      await promptInstall()
+    } else {
+      setShowIOSHelp(true)
+    }
+  }
+
+  if (state === 'installed' || dismissed) return null
+
+  return (
+    <div className="install-banner" style={{
+      margin: '12px 24px 0', padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+      background: 'var(--accent-glow)', border: '1px solid var(--accent)',
+      display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5,
+    }}>
+      <Smartphone size={15} style={{ flexShrink: 0, color: 'var(--accent)' }} />
+      <span style={{ flex: 1 }}>Install DBC Client Ledger on this device for quicker, full offline access.</span>
+      <button className="btn btn-sm" onClick={handleInstall} style={{ flexShrink: 0 }}>
+        Install
+      </button>
+      <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', flexShrink: 0 }}>
+        <X size={14} />
+      </button>
+
+      {showIOSHelp && (
+        <div className="modal-backdrop" onClick={() => setShowIOSHelp(false)}>
+          <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Add to Home Screen</span>
+              <button className="icon-btn" onClick={() => setShowIOSHelp(false)}><X size={18} /></button>
+            </div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--text-2)' }}>
+              {state === 'ios' ? (
+                <ol style={{ paddingLeft: 18 }}>
+                  <li>Tap the <strong>Share</strong> icon in Safari's toolbar.</li>
+                  <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+                  <li>Tap <strong>Add</strong> in the top-right corner.</li>
+                </ol>
+              ) : (
+                <ol style={{ paddingLeft: 18 }}>
+                  <li>Open your browser's menu (usually ⋮ or ≡ in the toolbar).</li>
+                  <li>Look for <strong>Add to Home Screen</strong> or <strong>Install app</strong>.</li>
+                  <li>Confirm to add it.</li>
+                </ol>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setShowIOSHelp(false)}>Got it</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AppShell({ userEmail }) {
   const [page, setPage] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -230,6 +305,8 @@ function AppShell({ userEmail }) {
           <ThemeToggle />
           <SyncPill />
         </header>
+
+        <InstallBanner />
 
         {conflicts.length > 0 && (
           <div style={{

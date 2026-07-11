@@ -9,6 +9,7 @@ const defaultSettings = {
   address: '',
   tin: '',
   logo: '',
+  deletePassword: '',
   currency: 'PHP',
   // Tax scheme is a company-level setting, not a per-voucher choice — under
   // BIR rules a business is registered as either VAT or Non-VAT/Percentage
