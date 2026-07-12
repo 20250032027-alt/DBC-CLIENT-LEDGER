@@ -80,42 +80,45 @@ async function exportVouchersToExcel(vouchers, clients) {
 }
 
 // ── Bulk import template — Cash Receipts & Disbursements ────────────────
-async function downloadVoucherImportTemplate(accounts) {
-  const XLSX = await import('xlsx')
+// Column layout matches the client's actual Disbursement Journal spreadsheet
+// exactly: a 2-row header (row 1: labels, row 2: Debit/Credit sub-labels for
+// the two "Account Title" columns), data starting on row 3 below that.
+const IMPORT_HEADER_ROW = ['Reference No.', 'Client', 'Payee', 'TIN No.', 'Address', 'Debit Amount', 'Vat', 'Cash', 'Account Title', 'Account Title']
+const IMPORT_SUBHEADER_ROW = ['', '', '', '', '', '', '', '', 'Debit', 'Credit']
 
-  const sampleRows = [
-    {
-      Date: new Date().toISOString().slice(0, 10),
-      Type: 'Cash Receipt',
-      Payee: 'Juan Dela Cruz',
-      TIN: '000-000-000-000',
-      Address: '123 Rizal St, Davao City',
-      'Cash/Bank Account': 'Cash',
-      Account: 'Sales Revenue',
-      Amount: 5000,
-      Reference: 'OR-001',
-      Description: 'Sample row — replace with your own data, then delete this line',
-    },
+async function downloadVoucherImportTemplate(journalType, accounts, taxAccountName) {
+  const XLSX = await import('xlsx')
+  const isDisbursement = journalType === 'cash disbursement'
+
+  const sampleRow = isDisbursement
+    ? ['SI#001', '', 'Cugman Golden Petron Service Station', '103-312-661-00000',
+       'Infront of Magnolia Highway Cugman, Cagayan de Oro City', 2364.83, 283.78, 2081.05, 'Fuel, Oil & Gas', 'Cash']
+    : ['OR#001', '', 'Juan Dela Cruz', '000-000-000-000',
+       '123 Rizal St, Davao City', 5000, 0, 5000, 'Cash', 'Sales Revenue']
+
+  const aoa = [IMPORT_HEADER_ROW, IMPORT_SUBHEADER_ROW, sampleRow]
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 22 }, { wch: 26 }, { wch: 18 }, { wch: 34 },
+    { wch: 13 }, { wch: 11 }, { wch: 13 }, { wch: 22 }, { wch: 22 },
   ]
   const wb = XLSX.utils.book_new()
-  const ws = XLSX.utils.json_to_sheet(sampleRows)
-  ws['!cols'] = [
-    { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 28 },
-    { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 34 },
-  ]
-  XLSX.utils.book_append_sheet(wb, ws, 'Vouchers')
+  const sheetName = isDisbursement ? 'Disbursement Journal' : 'Receipt Journal'
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
 
   const instructions = [
-    { Field: 'Date', Notes: 'Format: YYYY-MM-DD (e.g. 2026-07-11)' },
-    { Field: 'Type', Notes: 'Must be exactly "Cash Receipt" or "Cash Disbursement"' },
+    { Field: 'Reference No.', Notes: "The vendor's invoice/receipt number, or your own — optional" },
+    { Field: 'Client', Notes: "Optional — must match a saved client's name exactly to link it; otherwise it's just kept as a note" },
     { Field: 'Payee', Notes: 'Name of the person or entity being paid / received from' },
-    { Field: 'TIN', Notes: "Optional — payee's BIR Tax Identification Number" },
+    { Field: 'TIN No.', Notes: "Optional — payee's BIR Tax Identification Number" },
     { Field: 'Address', Notes: "Optional — payee's address" },
-    { Field: 'Cash/Bank Account', Notes: 'Must match an account in your Chart of Accounts, e.g. "Cash" or "Bank"' },
-    { Field: 'Account', Notes: 'The other side of the entry — must match an account in your Chart of Accounts' },
-    { Field: 'Amount', Notes: 'Number only, no currency symbol or commas' },
-    { Field: 'Reference', Notes: 'Optional — e.g. OR number or check number' },
-    { Field: 'Description', Notes: 'Optional line-item description' },
+    { Field: 'Debit Amount', Notes: `The full/gross amount — posted as a debit to the "Account Title (Debit)" account` },
+    { Field: 'Vat', Notes: taxAccountName
+        ? `The withheld/tax portion — posted to "${taxAccountName}" (set per import). Leave 0 or blank if none.`
+        : 'The withheld/tax portion, if any. Pick which account this posts to when you upload (leave 0/blank if none apply).' },
+    { Field: 'Cash', Notes: 'Debit Amount minus Vat — the actual cash amount. Must equal Debit Amount − Vat.' },
+    { Field: 'Account Title (Debit)', Notes: isDisbursement ? 'The expense/asset account being debited, e.g. "Fuel, Oil & Gas"' : 'Usually "Cash" or "Bank" — must match your Chart of Accounts' },
+    { Field: 'Account Title (Credit)', Notes: isDisbursement ? 'Usually "Cash" or "Bank" — must match your Chart of Accounts' : 'The revenue/income account being credited, e.g. "Sales Revenue"' },
     { Field: '', Notes: '' },
     { Field: 'Your Chart of Accounts', Notes: accounts.map(a => a.name).join(', ') },
   ]
@@ -123,70 +126,109 @@ async function downloadVoucherImportTemplate(accounts) {
   wsInfo['!cols'] = [{ wch: 22 }, { wch: 100 }]
   XLSX.utils.book_append_sheet(wb, wsInfo, 'Instructions')
 
-  XLSX.writeFile(wb, 'dbc-client-ledger-voucher-import-template.xlsx')
+  XLSX.writeFile(wb, `dbc-client-ledger-${isDisbursement ? 'disbursement' : 'receipt'}-journal-template.xlsx`)
 }
 
-// Parses an uploaded template into ready-to-save voucher records, or a list
-// of per-row errors for anything that doesn't check out (bad type, unknown
-// account, missing amount, etc.) — nothing gets imported until the person
-// confirms in the modal.
-function parseVoucherImportRows(json, accounts, existingVouchers) {
-  const valid = []
+function normHeader(v) {
+  return String(v || '').trim().toLowerCase().replace(/\.$/, '')
+}
+
+// Parses the uploaded sheet by column *position*, not by JSON key name — the
+// real template has "Account Title" as a header twice (Debit/Credit), which
+// would silently collide and overwrite each other under naive JSON parsing.
+// Finds the header row wherever it actually is (doesn't assume a fixed row
+// number), then reads the very next row to tell the two "Account Title"
+// columns apart via their Debit/Credit sub-labels.
+function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clients, existingVouchers) {
   const errors = []
+  const valid = []
+
+  const headerRowIdx = aoa.findIndex(row => row.some(cell => normHeader(cell) === 'reference no'))
+  if (headerRowIdx === -1) {
+    return { valid: [], errors: [{ row: '—', messages: ['Could not find the header row (expected a "Reference No." column) — is this the right template?'] }] }
+  }
+  const headerRow = aoa[headerRowIdx].map(normHeader)
+  const subRow = (aoa[headerRowIdx + 1] || []).map(normHeader)
+
+  function colIndex(label) { return headerRow.indexOf(label) }
+  const idx = {
+    ref: colIndex('reference no'), client: colIndex('client'), payee: colIndex('payee'),
+    tin: colIndex('tin no'), address: colIndex('address'), debitAmt: colIndex('debit amount'),
+    vat: colIndex('vat'), cash: colIndex('cash'),
+  }
+  const accountTitleCols = headerRow.reduce((acc, h, i) => { if (h === 'account title') acc.push(i); return acc }, [])
+  idx.acctDebit = accountTitleCols.find(i => subRow[i] === 'debit') ?? accountTitleCols[0]
+  idx.acctCredit = accountTitleCols.find(i => subRow[i] === 'credit') ?? accountTitleCols[1]
+
+  const dataStart = headerRowIdx + 2
   let pool = existingVouchers.filter(v => v.number)
 
-  json.forEach((row, i) => {
-    const rowNum = i + 2 // +1 for header row, +1 for 1-based row numbers
-    const typeRaw = String(row.Type || '').trim().toLowerCase()
-    const type = typeRaw === 'cash receipt' ? 'cash receipt' : typeRaw === 'cash disbursement' ? 'cash disbursement' : null
-    const date = String(row.Date || '').trim()
-    const account = String(row.Account || '').trim()
-    const cashAccount = String(row['Cash/Bank Account'] || 'Cash').trim()
-    const amount = parseFloat(row.Amount)
+  for (let r = dataStart; r < aoa.length; r++) {
+    const row = aoa[r] || []
+    const isBlank = row.every(c => c === '' || c === undefined || c === null)
+    if (isBlank) continue
+
+    const rowNum = r + 1 // 1-based, matches what a person sees in Excel
+    const get = i => (i == null || i < 0) ? '' : row[i]
+    const accountDebit = String(get(idx.acctDebit) || '').trim()
+    const accountCredit = String(get(idx.acctCredit) || '').trim()
+    const debitAmount = parseFloat(get(idx.debitAmt))
+    const vatAmount = parseFloat(get(idx.vat)) || 0
+    const cashAmount = parseFloat(get(idx.cash))
 
     const rowErrors = []
-    if (!type) rowErrors.push('Type must be exactly "Cash Receipt" or "Cash Disbursement"')
-    if (!date) rowErrors.push('Date is required')
-    if (!account) rowErrors.push('Account is required')
-    else if (!accounts.find(a => a.name.trim().toLowerCase() === account.toLowerCase())) rowErrors.push(`Account "${account}" not found in Chart of Accounts`)
-    if (!accounts.find(a => a.name.trim().toLowerCase() === cashAccount.toLowerCase())) rowErrors.push(`Cash/Bank Account "${cashAccount}" not found in Chart of Accounts`)
-    if (!amount || amount <= 0) rowErrors.push('Amount must be a positive number')
+    if (!accountDebit) rowErrors.push('Account Title (Debit) is required')
+    else if (!accounts.find(a => a.name.trim().toLowerCase() === accountDebit.toLowerCase())) rowErrors.push(`Account "${accountDebit}" not found in Chart of Accounts`)
+    if (!accountCredit) rowErrors.push('Account Title (Credit) is required')
+    else if (!accounts.find(a => a.name.trim().toLowerCase() === accountCredit.toLowerCase())) rowErrors.push(`Account "${accountCredit}" not found in Chart of Accounts`)
+    if (!debitAmount || debitAmount <= 0) rowErrors.push('Debit Amount must be a positive number')
+    if (!cashAmount || cashAmount <= 0) rowErrors.push('Cash must be a positive number')
+    if (vatAmount > 0 && !taxAccountName) rowErrors.push('This row has a Vat amount, but no tax/withholding account was selected for this import')
+    if (Math.abs((vatAmount + cashAmount) - debitAmount) > 0.01) rowErrors.push(`Vat + Cash (${(vatAmount + cashAmount).toFixed(2)}) doesn't equal Debit Amount (${debitAmount.toFixed(2)})`)
 
     if (rowErrors.length) {
       errors.push({ row: rowNum, messages: rowErrors })
-      return
+      continue
     }
 
-    const number = nextVoucherNumber(type, date, pool)
-    pool = [...pool, { type, date, number }]
+    const date = new Date().toISOString().slice(0, 10) // sheet has no per-row date column
+    const number = nextVoucherNumber(journalType, date, pool)
+    pool = [...pool, { type: journalType, date, number }]
 
-    const isReceipt = type === 'cash receipt'
-    const rawEntries = isReceipt
-      ? [
-          { account: cashAccount, debit: String(amount), credit: '' },
-          { account, debit: '', credit: String(amount) },
-        ]
-      : [
-          { account, debit: String(amount), credit: '' },
-          { account: cashAccount, debit: '', credit: String(amount) },
-        ]
+    const description = String(get(idx.ref) || '')
+    const isDisbursement = journalType === 'cash disbursement'
+    const entries = []
+    if (isDisbursement) {
+      entries.push({ account: accountDebit, description, debit: String(debitAmount), credit: '' })
+      if (vatAmount > 0) entries.push({ account: taxAccountName, description, debit: '', credit: String(vatAmount) })
+      entries.push({ account: accountCredit, description, debit: '', credit: String(cashAmount) })
+    } else {
+      entries.push({ account: accountDebit, description, debit: String(cashAmount), credit: '' })
+      if (vatAmount > 0) entries.push({ account: taxAccountName, description, debit: String(vatAmount), credit: '' })
+      entries.push({ account: accountCredit, description, debit: '', credit: String(debitAmount) })
+    }
+
+    const clientNameRaw = String(get(idx.client) || '').trim()
+    const matchedClient = clientNameRaw ? clients.find(c => c.name.trim().toLowerCase() === clientNameRaw.toLowerCase()) : null
 
     valid.push({
-      type, date, number,
-      reference: String(row.Reference || ''),
-      memo: String(row.Description || ''),
-      payee: String(row.Payee || ''),
-      payeeTin: String(row.TIN || ''),
-      payeeAddress: String(row.Address || ''),
-      clientId: '',
-      entries: rawEntries.map(e => ({ ...e, description: String(row.Description || ''), id: crypto.randomUUID() })),
+      type: journalType, date, number,
+      reference: String(get(idx.ref) || ''),
+      memo: matchedClient || !clientNameRaw ? '' : `Client on file: ${clientNameRaw} (not found in Clients — not linked)`,
+      payee: String(get(idx.payee) || ''),
+      payeeTin: String(get(idx.tin) || ''),
+      payeeAddress: String(get(idx.address) || ''),
+      clientId: matchedClient?.id || '',
+      entries: entries.map(e => ({ ...e, id: crypto.randomUUID() })),
     })
-  })
+  }
 
   return { valid, errors }
 }
 
-function ImportVouchersModal({ accounts, vouchers, onImport, onClose }) {
+function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose }) {
+  const [journalType, setJournalType] = useState('cash disbursement')
+  const [taxAccountName, setTaxAccountName] = useState(() => accounts.find(a => /vat payable/i.test(a.name))?.name || '')
   const [results, setResults] = useState(null)
   const [importing, setImporting] = useState(false)
   const [done, setDone] = useState(null)
@@ -198,8 +240,8 @@ function ImportVouchersModal({ accounts, vouchers, onImport, onClose }) {
     const buf = await file.arrayBuffer()
     const wb = XLSX.read(buf, { type: 'array' })
     const sheet = wb.Sheets[wb.SheetNames[0]]
-    const json = XLSX.utils.sheet_to_json(sheet, { defval: '' })
-    setResults(parseVoucherImportRows(json, accounts, vouchers))
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+    setResults(parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clients, vouchers))
     e.target.value = ''
   }
 
@@ -213,7 +255,7 @@ function ImportVouchersModal({ accounts, vouchers, onImport, onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 560 }}>
+      <div className="modal" style={{ maxWidth: 580 }}>
         <div className="modal-header">
           <span className="modal-title">Bulk Import — Cash Receipts &amp; Disbursements</span>
           <button className="icon-btn" onClick={onClose}><X size={18} /></button>
@@ -227,12 +269,29 @@ function ImportVouchersModal({ accounts, vouchers, onImport, onClose }) {
         ) : (
           <>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
-              Download the template, fill in one row per transaction, then upload it back here.
-              Each row becomes a balanced two-line Cash Receipt or Cash Disbursement voucher automatically.
+              Each row becomes a voucher: Debit Amount posts to Account Title (Debit), Vat posts to
+              the tax account below (if any), and Cash posts to Account Title (Credit).
             </div>
 
-            <button className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }} onClick={() => downloadVoucherImportTemplate(accounts)}>
-              <Download size={13} /> Download Template
+            <div className="form-grid" style={{ marginBottom: 14 }}>
+              <div className="form-group">
+                <label className="form-label">Journal Type</label>
+                <select className="form-select" value={journalType} onChange={e => { setJournalType(e.target.value); setResults(null) }}>
+                  <option value="cash disbursement">Disbursement Journal</option>
+                  <option value="cash receipt">Receipt Journal</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Tax / Withholding Account</label>
+                <select className="form-select" value={taxAccountName} onChange={e => { setTaxAccountName(e.target.value); setResults(null) }}>
+                  <option value="">— None (Vat column must be 0) —</option>
+                  {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <button className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }} onClick={() => downloadVoucherImportTemplate(journalType, accounts, taxAccountName)}>
+              <Download size={13} /> Download {journalType === 'cash disbursement' ? 'Disbursement' : 'Receipt'} Journal Template
             </button>
 
             <div className="form-group form-col-full" style={{ marginBottom: 4 }}>
@@ -1817,6 +1876,7 @@ export default function Vouchers() {
       {showImport && (
         <ImportVouchersModal
           accounts={accounts}
+          clients={clients}
           vouchers={vouchers}
           onImport={addVoucher}
           onClose={() => setShowImport(false)}
