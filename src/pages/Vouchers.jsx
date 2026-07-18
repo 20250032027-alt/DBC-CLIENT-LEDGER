@@ -620,9 +620,14 @@ function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, ind
         />
       </td>
       <td>
-        <button className="icon-btn" onClick={onRemove} style={{ color: 'var(--red)' }}>
-          <Trash2 size={13} />
-        </button>
+        <div style={{ display: 'flex', gap: 2 }}>
+          <button className="icon-btn" onClick={() => onAddBelow(index)} title="Insert a new line below this one">
+            <Plus size={13} />
+          </button>
+          <button className="icon-btn" onClick={onRemove} style={{ color: 'var(--red)' }} title="Remove this line">
+            <Trash2 size={13} />
+          </button>
+        </div>
       </td>
     </tr>
   )
@@ -1340,7 +1345,14 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
   function removeEntry(i) {
     setF('entries', form.entries.filter((_, idx) => idx !== i))
   }
-  function addEntry() { setF('entries', [...form.entries, blankEntry()]) }
+  function addEntry(atIndex) {
+    const idx = atIndex === undefined ? form.entries.length - 1 : atIndex
+    setF('entries', [
+      ...form.entries.slice(0, idx + 1),
+      blankEntry(),
+      ...form.entries.slice(idx + 1),
+    ])
+  }
 
   // Push calculator result into the last focused entry row
   function calcUseDebit(val) {
@@ -1612,11 +1624,11 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
           <table style={{ fontSize: 12, minWidth: 560 }}>
             <thead>
               <tr>
-                <th style={{ width: '28%' }}>Account</th>
-                <th style={{ width: '34%' }}>Description</th>
-                <th style={{ width: '17%', textAlign: 'right' }}>Debit</th>
-                <th style={{ width: '17%', textAlign: 'right' }}>Credit</th>
-                <th style={{ width: '4%' }}></th>
+                <th style={{ width: '27%' }}>Account</th>
+                <th style={{ width: '32%' }}>Description</th>
+                <th style={{ width: '16%', textAlign: 'right' }}>Debit</th>
+                <th style={{ width: '16%', textAlign: 'right' }}>Credit</th>
+                <th style={{ width: '9%' }}></th>
               </tr>
             </thead>
             <tbody>
