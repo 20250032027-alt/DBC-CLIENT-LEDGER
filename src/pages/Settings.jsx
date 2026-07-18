@@ -2,12 +2,15 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { supabase } from '../lib/supabase'
 import { getInstallState, promptInstall } from '../lib/installPrompt'
-import { Save, LogOut, Cloud, Smartphone, X } from 'lucide-react'
+import { clearLocalDb } from '../lib/db'
+import { stopSync } from '../lib/sync'
+import { Save, LogOut, Cloud, Smartphone, X, RotateCcw } from 'lucide-react'
 
 export default function Settings({ userEmail }) {
-  const { settings, updateSettings, deleteAllData } = useStore()
+  const { settings, updateSettings, deleteAllData, pending } = useStore()
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   const [installState, setInstallState] = useState('installed')
   const [showIOSHelp, setShowIOSHelp] = useState(false)
@@ -243,6 +246,36 @@ export default function Settings({ userEmail }) {
             the voucher number — an extra check against accidental deletion. This isn't
             encrypted, so treat it as a speed bump rather than real security. Click "Save
             Settings" above to apply changes here.
+          </div>
+        </div>
+
+        {pending > 0 && (
+          <div style={{
+            fontSize: 12.5, color: 'var(--amber)', background: 'var(--amber-dim)',
+            borderRadius: 'var(--radius-sm)', padding: '8px 12px', marginBottom: 14,
+          }}>
+            {pending} change{pending !== 1 ? 's' : ''} on this device {pending !== 1 ? "haven't" : "hasn't"} synced to the cloud yet.
+          </div>
+        )}
+
+        <div style={{ marginBottom: 16 }}>
+          <button className="btn btn-ghost btn-sm" disabled={resetting} onClick={async () => {
+            const warning = pending > 0
+              ? `This device has ${pending} unsynced change${pending !== 1 ? 's' : ''} that will be permanently lost if they haven't already reached the cloud. Only do this if sync has been stuck/failing. Continue?`
+              : 'Clear this device\'s local offline cache and reload fresh from the cloud? Nothing on the server is affected — only use this if sync is stuck on this specific device.'
+            if (!confirm(warning)) return
+            setResetting(true)
+            stopSync()
+            await clearLocalDb()
+            window.location.reload()
+          }}>
+            <RotateCcw size={14} /> {resetting ? 'Resetting…' : 'Reset This Device'}
+          </button>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, maxWidth: 480 }}>
+            Wipes this device's local offline copy and re-downloads everything fresh from the
+            cloud. Use this if sync gets permanently stuck on one specific device (e.g. an old
+            error keeps retrying forever) — it doesn't touch your real data on the server, only
+            this device's local cache. Other devices are unaffected.
           </div>
         </div>
 
