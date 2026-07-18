@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore.jsx'
 import { useTheme } from '../lib/theme.jsx'
 import { useIsMobile } from '../lib/useIsMobile'
 import { fmt } from '../utils'
-import { Plus, X, Trash2, Pencil, BookOpen, Sparkles } from 'lucide-react'
+import { Plus, X, Trash2, Pencil, BookOpen, Sparkles, Search } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts'
@@ -131,6 +131,7 @@ export default function ChartOfAccounts() {
   const gridStroke = theme === 'dark' ? '#2a3347' : '#e2e6ee'
   const tickFill = theme === 'dark' ? '#64748b' : '#5b6478'
   const [modal, setModal] = useState(null)
+  const [search, setSearch] = useState('')
 
   // Net debit/credit posted to each account name (case-insensitive),
   // gathered from every voucher entry across the whole ledger.
@@ -162,6 +163,17 @@ export default function ChartOfAccounts() {
     .filter(a => Math.abs(a.balance) > 0.005)
     .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
     .slice(0, 12)
+
+  const filteredAccounts = accounts.filter(a => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      a.name.toLowerCase().includes(q) ||
+      (a.code || '').toLowerCase().includes(q) ||
+      (a.description || '').toLowerCase().includes(q) ||
+      TYPE_LABEL[a.type].toLowerCase().includes(q)
+    )
+  })
 
   return (
     <div className="page-content">
@@ -226,6 +238,13 @@ export default function ChartOfAccounts() {
             </div>
           )}
 
+          <div className="toolbar">
+            <div className="search-bar">
+              <Search size={14} color="var(--text-3)" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search accounts by name, code, type, or description..." />
+            </div>
+          </div>
+
           <div className="table-wrap">
             <table>
               <thead>
@@ -239,7 +258,14 @@ export default function ChartOfAccounts() {
                 </tr>
               </thead>
               <tbody>
-                {accounts.map(a => {
+                {filteredAccounts.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '20px 0' }}>
+                      No accounts match "{search}"
+                    </td>
+                  </tr>
+                )}
+                {filteredAccounts.map(a => {
                   const bal = balanceFor(a)
                   return (
                     <tr key={a.id}>

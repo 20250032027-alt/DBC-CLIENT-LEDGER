@@ -222,7 +222,7 @@ function InstallBanner() {
   )
 }
 
-function AppShell({ userEmail }) {
+function AppShell({ userEmail, bypassApprovalGate }) {
   const [page, setPage] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { loading, error, clearError, conflicts, clearConflicts, settings } = useStore()
@@ -239,7 +239,7 @@ function AppShell({ userEmail }) {
     )
   }
 
-  if (!settings.approved) {
+  if (!bypassApprovalGate && !settings.approved) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', padding: 24, textAlign: 'center' }}>
         <Clock size={28} style={{ color: 'var(--amber)' }} />
@@ -393,7 +393,7 @@ function ConfigMissing() {
 // New accounts need this email's approval before they can use the app.
 const ADMIN_EMAIL = 'etaxbir@gmail.com'
 
-function AdminConsole() {
+function AdminConsole({ onView }) {
   const [rows, setRows] = useState(null)
   const [error, setError] = useState(null)
   const [busyId, setBusyId] = useState(null)
@@ -448,9 +448,14 @@ function AdminConsole() {
                     <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.company || '(no company name yet)'}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.email || r.user_id}</div>
                   </div>
-                  <button className="btn btn-primary btn-sm" disabled={busyId === r.user_id} onClick={() => setApproved(r.user_id, true)}>
-                    Approve
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => onView(r.user_id, r.company)}>
+                      Manage Ledger
+                    </button>
+                    <button className="btn btn-primary btn-sm" disabled={busyId === r.user_id} onClick={() => setApproved(r.user_id, true)}>
+                      Approve
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -465,9 +470,14 @@ function AdminConsole() {
                     <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.company || '(no company name yet)'}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.email || r.user_id}</div>
                   </div>
-                  <button className="btn btn-ghost btn-sm" disabled={busyId === r.user_id} onClick={() => setApproved(r.user_id, false)}>
-                    Revoke
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => onView(r.user_id, r.company)}>
+                      Manage Ledger
+                    </button>
+                    <button className="btn btn-ghost btn-sm" disabled={busyId === r.user_id} onClick={() => setApproved(r.user_id, false)}>
+                      Revoke
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -478,8 +488,30 @@ function AdminConsole() {
   )
 }
 
+// Persistent, unmissable strip shown while the admin is inside a client's
+// ledger — so it's never ambiguous whose books are on screen.
+function AdminBanner({ company, onExit }) {
+  return (
+    <div style={{
+      background: 'var(--red)', color: '#fff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+      padding: '8px 16px', fontSize: 13, fontWeight: 600,
+    }}>
+      <span>Admin mode — viewing {company || 'this client'}'s ledger</span>
+      <button
+        onClick={onExit}
+        style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+      >
+        Exit
+      </button>
+    </div>
+  )
+}
+
 function AppInner() {
   const [session, setSession] = useState(undefined) // undefined = checking, null = signed out
+
+  const [viewingClient, setViewingClient] = useState(null) // { userId, company } | null
 
   useEffect(() => {
     if (!isSupabaseConfigured) return
@@ -504,10 +536,19 @@ function AppInner() {
   if (!session) return <><ToastHost /><ConnectivityWatcher /><Login /></>
 
   if (session.user.email === ADMIN_EMAIL) {
+    if (viewingClient) {
+      return (
+        <StoreProvider userId={viewingClient.userId} userEmail={ADMIN_EMAIL}>
+          <ToastHost /><ConnectivityWatcher />
+          <AdminBanner company={viewingClient.company} onExit={() => setViewingClient(null)} />
+          <AppShell userEmail={ADMIN_EMAIL} bypassApprovalGate />
+        </StoreProvider>
+      )
+    }
     return (
       <>
         <ToastHost /><ConnectivityWatcher />
-        <AdminConsole />
+        <AdminConsole onView={(userId, company) => setViewingClient({ userId, company })} />
       </>
     )
   }
