@@ -139,13 +139,16 @@ function normHeader(v) {
 // Finds the header row wherever it actually is (doesn't assume a fixed row
 // number), then reads the very next row to tell the two "Account Title"
 // columns apart via their Debit/Credit sub-labels.
+// Builds ONE draft voucher out of every row in the sheet, rather than one
+// voucher per row. Nothing gets rejected — a row with an unrecognized
+// account, a missing amount, or an imbalance still becomes entry lines, just
+// marked `flagged: true` with the specific issue prepended to its
+// description in red. The whole voucher is created unposted (draft) so
+// someone reviews and fixes flagged lines before it counts in any report.
 function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clients, existingVouchers) {
-  const errors = []
-  const valid = []
-
   const headerRowIdx = aoa.findIndex(row => row.some(cell => normHeader(cell) === 'reference no'))
   if (headerRowIdx === -1) {
-    return { valid: [], errors: [{ row: '—', messages: ['Could not find the header row (expected a "Reference No." column) — is this the right template?'] }] }
+    return { entries: [], flaggedCount: 0, rowCount: 0, clientNote: '', headerError: 'Could not find the header row (expected a "Reference No." column) — is this the right template?' }
   }
   const headerRow = aoa[headerRowIdx].map(normHeader)
   const subRow = (aoa[headerRowIdx + 1] || []).map(normHeader)
@@ -161,77 +164,82 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
   idx.acctCredit = accountTitleCols.find(i => subRow[i] === 'credit') ?? accountTitleCols[1]
 
   const dataStart = headerRowIdx + 2
-  let pool = existingVouchers.filter(v => v.number)
+  const isDisbursement = journalType === 'cash disbursement'
+  const entries = []
+  const clientNames = new Set()
+  let flaggedCount = 0
+  let rowCount = 0
 
   for (let r = dataStart; r < aoa.length; r++) {
     const row = aoa[r] || []
     const isBlank = row.every(c => c === '' || c === undefined || c === null)
     if (isBlank) continue
+    rowCount++
 
-    const rowNum = r + 1 // 1-based, matches what a person sees in Excel
     const get = i => (i == null || i < 0) ? '' : row[i]
     const accountDebit = String(get(idx.acctDebit) || '').trim()
     const accountCredit = String(get(idx.acctCredit) || '').trim()
     const debitAmount = parseFloat(get(idx.debitAmt))
     const vatAmount = parseFloat(get(idx.vat)) || 0
     const cashAmount = parseFloat(get(idx.cash))
-
-    const rowErrors = []
-    if (!accountDebit) rowErrors.push('Account Title (Debit) is required')
-    else if (!accounts.find(a => a.name.trim().toLowerCase() === accountDebit.toLowerCase())) rowErrors.push(`Account "${accountDebit}" not found in Chart of Accounts`)
-    if (!accountCredit) rowErrors.push('Account Title (Credit) is required')
-    else if (!accounts.find(a => a.name.trim().toLowerCase() === accountCredit.toLowerCase())) rowErrors.push(`Account "${accountCredit}" not found in Chart of Accounts`)
-    if (!debitAmount || debitAmount <= 0) rowErrors.push('Debit Amount must be a positive number')
-    if (!cashAmount || cashAmount <= 0) rowErrors.push('Cash must be a positive number')
-    if (vatAmount > 0 && !taxAccountName) rowErrors.push('This row has a Vat amount, but no tax/withholding account was selected for this import')
-    if (Math.abs((vatAmount + cashAmount) - debitAmount) > 0.01) rowErrors.push(`Vat + Cash (${(vatAmount + cashAmount).toFixed(2)}) doesn't equal Debit Amount (${debitAmount.toFixed(2)})`)
-
-    if (rowErrors.length) {
-      errors.push({ row: rowNum, messages: rowErrors })
-      continue
-    }
-
-    const date = new Date().toISOString().slice(0, 10) // sheet has no per-row date column
-    const number = nextVoucherNumber(journalType, date, pool)
-    pool = [...pool, { type: journalType, date, number }]
-
-    const description = String(get(idx.ref) || '')
-    const isDisbursement = journalType === 'cash disbursement'
-    const entries = []
-    if (isDisbursement) {
-      entries.push({ account: accountDebit, description, debit: String(debitAmount), credit: '' })
-      if (vatAmount > 0) entries.push({ account: taxAccountName, description, debit: '', credit: String(vatAmount) })
-      entries.push({ account: accountCredit, description, debit: '', credit: String(cashAmount) })
-    } else {
-      entries.push({ account: accountDebit, description, debit: String(cashAmount), credit: '' })
-      if (vatAmount > 0) entries.push({ account: taxAccountName, description, debit: String(vatAmount), credit: '' })
-      entries.push({ account: accountCredit, description, debit: '', credit: String(debitAmount) })
-    }
-
+    const ref = String(get(idx.ref) || '').trim()
+    const payee = String(get(idx.payee) || '').trim()
+    const tin = String(get(idx.tin) || '').trim()
+    const address = String(get(idx.address) || '').trim()
     const clientNameRaw = String(get(idx.client) || '').trim()
-    const matchedClient = clientNameRaw ? clients.find(c => c.name.trim().toLowerCase() === clientNameRaw.toLowerCase()) : null
+    if (clientNameRaw) clientNames.add(clientNameRaw)
 
-    valid.push({
-      type: journalType, date, number,
-      reference: String(get(idx.ref) || ''),
-      memo: matchedClient || !clientNameRaw ? '' : `Client on file: ${clientNameRaw} (not found in Clients — not linked)`,
-      payee: String(get(idx.payee) || ''),
-      payeeTin: String(get(idx.tin) || ''),
-      payeeAddress: String(get(idx.address) || ''),
-      clientId: matchedClient?.id || '',
-      entries: entries.map(e => ({ ...e, id: crypto.randomUUID() })),
+    const issues = []
+    if (!accountDebit) issues.push('missing debit account')
+    else if (!accounts.find(a => a.name.trim().toLowerCase() === accountDebit.toLowerCase())) issues.push(`account "${accountDebit}" not in Chart of Accounts`)
+    if (!accountCredit) issues.push('missing credit account')
+    else if (!accounts.find(a => a.name.trim().toLowerCase() === accountCredit.toLowerCase())) issues.push(`account "${accountCredit}" not in Chart of Accounts`)
+    const safeDebit = Number.isFinite(debitAmount) && debitAmount > 0 ? debitAmount : 0
+    const safeCash = Number.isFinite(cashAmount) && cashAmount > 0 ? cashAmount : 0
+    if (!safeDebit) issues.push('missing/invalid Debit Amount')
+    if (!safeCash) issues.push('missing/invalid Cash amount')
+    if (vatAmount > 0 && !taxAccountName) issues.push('has Vat but no tax account was chosen for this import')
+    if (safeDebit && safeCash && Math.abs((vatAmount + safeCash) - safeDebit) > 0.01) issues.push(`Vat + Cash ≠ Debit Amount`)
+
+    const flagged = issues.length > 0
+    if (flagged) flaggedCount++
+
+    const idBits = [payee, ref].filter(Boolean).join(' — ')
+    const baseDesc = idBits || `Row ${r + 1}`
+    const desc = flagged ? `⚠ ${issues.join('; ')} — ${baseDesc}` : baseDesc
+    const tinAddrNote = [tin && `TIN ${tin}`, address].filter(Boolean).join(' · ')
+    const fullDesc = tinAddrNote ? `${desc} (${tinAddrNote})` : desc
+
+    const line = (account, debit, credit) => ({
+      account, description: fullDesc,
+      debit: debit ? String(debit) : '', credit: credit ? String(credit) : '',
+      flagged, id: crypto.randomUUID(),
     })
+
+    if (isDisbursement) {
+      entries.push(line(accountDebit || '(unspecified account)', safeDebit, 0))
+      if (vatAmount > 0 && taxAccountName) entries.push(line(taxAccountName, 0, vatAmount))
+      entries.push(line(accountCredit || '(unspecified account)', 0, safeCash))
+    } else {
+      entries.push(line(accountDebit || '(unspecified account)', safeCash, 0))
+      if (vatAmount > 0 && taxAccountName) entries.push(line(taxAccountName, vatAmount, 0))
+      entries.push(line(accountCredit || '(unspecified account)', 0, safeDebit))
+    }
   }
 
-  return { valid, errors }
+  const clientNote = clientNames.size
+    ? `Clients on these lines: ${[...clientNames].join(', ')}`
+    : ''
+
+  return { entries, flaggedCount, rowCount, clientNote, headerError: null }
 }
 
 function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose }) {
   const [journalType, setJournalType] = useState('cash disbursement')
   const [taxAccountName, setTaxAccountName] = useState(() => accounts.find(a => /vat payable/i.test(a.name))?.name || '')
-  const [results, setResults] = useState(null)
+  const [parsed, setParsed] = useState(null)
   const [importing, setImporting] = useState(false)
-  const [done, setDone] = useState(null)
+  const [createdNumber, setCreatedNumber] = useState(null)
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
@@ -241,16 +249,25 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
     const wb = XLSX.read(buf, { type: 'array' })
     const sheet = wb.Sheets[wb.SheetNames[0]]
     const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
-    setResults(parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clients, vouchers))
+    setParsed(parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clients, vouchers))
     e.target.value = ''
   }
 
   async function handleImport() {
-    if (!results?.valid?.length) return
+    if (!parsed?.entries?.length) return
     setImporting(true)
-    for (const v of results.valid) await onImport(v)
+    const date = new Date().toISOString().slice(0, 10)
+    const number = nextVoucherNumber(journalType, date, vouchers)
+    const memo = `Bulk import — ${parsed.rowCount} row${parsed.rowCount !== 1 ? 's' : ''}` +
+      (parsed.flaggedCount ? `, ${parsed.flaggedCount} flagged for review` : '') +
+      (parsed.clientNote ? `. ${parsed.clientNote}` : '')
+    await onImport({
+      type: journalType, date, number, posted: false,
+      reference: '', memo, payee: '', payeeTin: '', payeeAddress: '', clientId: '',
+      entries: parsed.entries,
+    })
     setImporting(false)
-    setDone(results.valid.length)
+    setCreatedNumber(number)
   }
 
   return (
@@ -261,29 +278,33 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
           <button className="icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
 
-        {done !== null ? (
+        {createdNumber !== null ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <CheckCircle size={32} style={{ color: 'var(--green)', marginBottom: 10 }} />
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{done} voucher{done !== 1 ? 's' : ''} imported</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Draft voucher {createdNumber} created</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6 }}>
+              It's marked DRAFT and won't affect your reports until you review it and click Post.
+            </div>
           </div>
         ) : (
           <>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
-              Each row becomes a voucher: Debit Amount posts to Account Title (Debit), Vat posts to
-              the tax account below (if any), and Cash posts to Account Title (Credit).
+              Every row in the sheet becomes lines inside <strong>one draft voucher</strong> — nothing gets
+              rejected. Rows with a problem (unknown account, missing amount, etc.) are still included,
+              just flagged in red with a remark, so you can review and fix them before posting.
             </div>
 
             <div className="form-grid" style={{ marginBottom: 14 }}>
               <div className="form-group">
                 <label className="form-label">Journal Type</label>
-                <select className="form-select" value={journalType} onChange={e => { setJournalType(e.target.value); setResults(null) }}>
+                <select className="form-select" value={journalType} onChange={e => { setJournalType(e.target.value); setParsed(null) }}>
                   <option value="cash disbursement">Disbursement Journal</option>
                   <option value="cash receipt">Receipt Journal</option>
                 </select>
               </div>
               <div className="form-group">
                 <label className="form-label">Tax / Withholding Account</label>
-                <select className="form-select" value={taxAccountName} onChange={e => { setTaxAccountName(e.target.value); setResults(null) }}>
+                <select className="form-select" value={taxAccountName} onChange={e => { setTaxAccountName(e.target.value); setParsed(null) }}>
                   <option value="">— None (Vat column must be 0) —</option>
                   {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
                 </select>
@@ -299,34 +320,46 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
               <input type="file" accept=".xlsx,.xls" className="form-input" onChange={handleFile} />
             </div>
 
-            {results && (
+            {parsed?.headerError && (
+              <div style={{ fontSize: 12.5, color: 'var(--red)', marginTop: 10 }}>{parsed.headerError}</div>
+            )}
+
+            {parsed && !parsed.headerError && (
               <div style={{ marginTop: 14 }}>
                 <div style={{ fontSize: 13, marginBottom: 8 }}>
-                  <strong style={{ color: 'var(--green)' }}>{results.valid.length} ready to import</strong>
-                  {results.errors.length > 0 && <span style={{ color: 'var(--red)' }}> · {results.errors.length} skipped</span>}
+                  <strong>{parsed.rowCount} row{parsed.rowCount !== 1 ? 's' : ''}</strong> → {parsed.entries.length} lines in one draft voucher
+                  {parsed.flaggedCount > 0 && <span style={{ color: 'var(--red)' }}> · {parsed.flaggedCount} flagged for review</span>}
                 </div>
-                {results.errors.length > 0 && (
-                  <div style={{ maxHeight: 160, overflowY: 'auto', fontSize: 11.5, background: 'var(--surface2)', borderRadius: 'var(--radius-sm)', padding: 10, marginBottom: 12 }}>
-                    {results.errors.map(e => (
-                      <div key={e.row} style={{ marginBottom: 4 }}>
-                        <strong>Row {e.row}:</strong> {e.messages.join('; ')}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div style={{ maxHeight: 220, overflowY: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                  {parsed.entries.map(e => (
+                    <div key={e.id} style={{
+                      display: 'flex', justifyContent: 'space-between', gap: 10,
+                      padding: '6px 10px', fontSize: 11.5,
+                      background: e.flagged ? 'var(--red-dim)' : undefined,
+                      borderBottom: '1px solid var(--border)',
+                    }}>
+                      <span style={{ color: e.flagged ? 'var(--red)' : 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {e.account} — {e.description}
+                      </span>
+                      <span className="td-mono" style={{ flexShrink: 0 }}>
+                        {e.debit ? fmt(parseFloat(e.debit)) : ''}{e.credit ? fmt(parseFloat(e.credit)) : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </>
         )}
 
         <div className="modal-footer">
-          {done !== null ? (
+          {createdNumber !== null ? (
             <button className="btn btn-primary" onClick={onClose}>Done</button>
           ) : (
             <>
               <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-              <button className="btn btn-primary" disabled={!results?.valid?.length || importing} onClick={handleImport}>
-                {importing ? 'Importing…' : `Import ${results?.valid?.length || 0} Voucher${results?.valid?.length === 1 ? '' : 's'}`}
+              <button className="btn btn-primary" disabled={!parsed?.entries?.length || importing} onClick={handleImport}>
+                {importing ? 'Creating…' : 'Create Draft Voucher'}
               </button>
             </>
           )}
@@ -545,11 +578,11 @@ function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, ind
   }
 
   return (
-    <tr>
+    <tr style={entry.flagged ? { background: 'var(--red-dim)' } : undefined}>
       <td style={{ position: 'relative' }}>
         <AccountAutocomplete
           value={entry.account}
-          onChange={v => onChange({ ...entry, account: v })}
+          onChange={v => onChange({ ...entry, account: v, flagged: false })}
           onFocus={() => onFocus(index, 'debit')}
           accounts={accounts}
           placeholder="Account name"
@@ -567,7 +600,7 @@ function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, ind
       </td>
       <td>
         <input
-          className="form-input"
+          className="form-input input-no-spinner"
           style={{ fontSize: 12, padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--mono)' }}
           type="number" min="0" step="0.01" value={entry.debit}
           onFocus={() => onFocus(index, 'debit')}
@@ -577,7 +610,7 @@ function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, ind
       </td>
       <td>
         <input
-          className="form-input"
+          className="form-input input-no-spinner"
           style={{ fontSize: 12, padding: '5px 8px', textAlign: 'right', fontFamily: 'var(--mono)' }}
           type="number" min="0" step="0.01" value={entry.credit}
           onFocus={() => onFocus(index, 'credit')}
@@ -1285,6 +1318,7 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
   const [form, setForm] = useState(voucher ? { ...voucher, memo: voucher.memo || '' } : {
     type: 'general', date: new Date().toISOString().slice(0, 10),
     reference: '', memo: '', clientId: '', payee: '', payeeTin: '', payeeAddress: '',
+    posted: true,
     entries: [blankEntry(), blankEntry()],
   })
   const [lastFocused, setLastFocused] = useState({ index: 0, side: 'debit' })
@@ -1682,11 +1716,18 @@ export default function Vouchers() {
 
   const filtered = vouchers.filter(v => {
     const q = search.toLowerCase()
-    const matchSearch = v.number.toLowerCase().includes(q) ||
+    const matchSearch = (v.number || '').toLowerCase().includes(q) ||
       (v.memo || '').toLowerCase().includes(q) ||
       (v.reference || '').toLowerCase().includes(q)
     const matchType = typeFilter === 'all' || v.type === typeFilter
     return matchSearch && matchType
+  }).sort((a, b) => {
+    // Most recent first. Falls back to createdAt when dates tie (or are
+    // missing) so same-day entries still land newest-first, most-recently-
+    // added on top.
+    const byDate = (b.date || '').localeCompare(a.date || '')
+    if (byDate !== 0) return byDate
+    return (b.createdAt || '').localeCompare(a.createdAt || '')
   })
 
   return (
@@ -1771,7 +1812,7 @@ export default function Vouchers() {
                 const isOpen = expanded.has(v.id)
                 return (
                   <Fragment key={v.id}>
-                    <tr>
+                    <tr style={v.posted === false ? { background: 'var(--amber-dim)' } : undefined}>
                       <td>
                         <button className="icon-btn" onClick={() => toggleExpand(v.id)} title={isOpen ? 'Hide entries' : 'Show entries'}>
                           {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -1788,6 +1829,9 @@ export default function Vouchers() {
                       </td>
                       <td>
                         <span className="badge badge-blue">{v.type}</span>
+                        {v.posted === false && (
+                          <span className="badge badge-amber" style={{ marginLeft: 6 }} title="Not yet posted — review the entries below, then click Post">DRAFT</span>
+                        )}
                       </td>
                       <td className="td-mono">{v.date || fmtDate(v.createdAt)}</td>
                       <td style={{ fontSize: 12, maxWidth: 160 }}>
@@ -1810,6 +1854,11 @@ export default function Vouchers() {
                       <td className="td-mono" style={{ textAlign: 'right' }}>{fmt(credit, settings.currency)}</td>
                       <td>
                         <div className="row-actions">
+                          {v.posted === false && (
+                            <button className="icon-btn" title="Post this voucher — includes it in reports" onClick={() => updateVoucher(v.id, { posted: true })} style={{ color: 'var(--green)' }}>
+                              <CheckCircle size={14} />
+                            </button>
+                          )}
                           <button className="icon-btn" title="Print Voucher" onClick={() => printVoucher(v, settings, accounts, clients)}><Printer size={14} /></button>
                           <button className="icon-btn" onClick={() => setModal(v)}><Pencil size={14} /></button>
                           <button className="icon-btn" onClick={() => setDeleteTarget(v)} style={{ color: 'var(--red)' }}><Trash2 size={14} /></button>
@@ -1817,13 +1866,13 @@ export default function Vouchers() {
                       </td>
                     </tr>
                     {isOpen && entries.map((e, i) => (
-                      <tr key={`${v.id}-${i}`} style={{ background: 'var(--surface2)' }}>
+                      <tr key={`${v.id}-${i}`} style={{ background: e.flagged ? 'var(--red-dim)' : 'var(--surface2)' }}>
                         <td></td>
                         <td colSpan={3}></td>
                         <td colSpan={2} style={{ fontSize: 12, paddingLeft: 12 }}>
                           <span style={{ color: 'var(--text-1)' }}>{e.account || '—'}</span>
                           {e.description && (
-                            <span style={{ color: 'var(--text-3)' }}> — {e.description}</span>
+                            <span style={{ color: e.flagged ? 'var(--red)' : 'var(--text-3)' }}> — {e.description}</span>
                           )}
                         </td>
                         <td colSpan={2}></td>

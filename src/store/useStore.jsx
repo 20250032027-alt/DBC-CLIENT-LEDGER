@@ -10,6 +10,8 @@ const defaultSettings = {
   tin: '',
   logo: '',
   deletePassword: '',
+  email: '',
+  approved: false,
   currency: 'PHP',
   // Tax scheme is a company-level setting, not a per-voucher choice — under
   // BIR rules a business is registered as either VAT or Non-VAT/Percentage
@@ -30,7 +32,7 @@ function liveRows(table) {
 
 const StoreContext = createContext(null)
 
-export function StoreProvider({ children, userId, initialCompany }) {
+export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   const [clients, setClients] = useState([])
   const [vouchers, setVouchers] = useState([])
   const [bills, setBills] = useState([])
@@ -108,9 +110,11 @@ export function StoreProvider({ children, userId, initialCompany }) {
       // collides with the real row.
       const existingSettings = await db.settings.get(userId)
       if (!existingSettings) {
-        const seedSettings = initialCompany
-          ? { ...defaultSettings, company: initialCompany }
-          : defaultSettings
+        const seedSettings = {
+          ...defaultSettings,
+          ...(initialCompany ? { company: initialCompany } : {}),
+          ...(userEmail ? { email: userEmail } : {}),
+        }
         await queueWrite('settings', 'insert', { userId, ...seedSettings }, { silent: true })
       }
 

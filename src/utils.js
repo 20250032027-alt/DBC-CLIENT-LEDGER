@@ -29,6 +29,15 @@ export function voucherTotals(entries = []) {
   return { debit, credit, balanced: Math.abs(debit - credit) < 0.01 }
 }
 
+// Vouchers created through bulk import start as drafts (posted: false) and
+// shouldn't affect real financial reports until someone reviews and posts
+// them. Older vouchers (and every normal one entered by hand) have no
+// `posted` field at all — treated as posted, so nothing already in the
+// books disappears from reports because of this.
+export function postedOnly(vouchers = []) {
+  return vouchers.filter(v => v.posted !== false)
+}
+
 // Single source of truth for voucher number prefixes/titles, shared between
 // the Vouchers page (assigning a number on save) and useStore's boot-time
 // backfill (fixing pre-existing records that were saved without one).

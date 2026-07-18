@@ -20,7 +20,7 @@ import {
   LayoutDashboard, Users, FileText, Scale, Waves,
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
-  WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone,
+  WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
 } from 'lucide-react'
 
 const NAV = [
@@ -225,7 +225,7 @@ function InstallBanner() {
 function AppShell({ userEmail }) {
   const [page, setPage] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { loading, error, clearError, conflicts, clearConflicts } = useStore()
+  const { loading, error, clearError, conflicts, clearConflicts, settings } = useStore()
   const Page = PAGES[page]
 
   function navigate(id) { setPage(id); setSidebarOpen(false) }
@@ -235,6 +235,22 @@ function AppShell({ userEmail }) {
       <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)' }}>
         <Loader2 size={22} className="spin" />
         <span style={{ fontSize: 13 }}>Loading your data…</span>
+      </div>
+    )
+  }
+
+  if (!settings.approved) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', padding: 24, textAlign: 'center' }}>
+        <Clock size={28} style={{ color: 'var(--amber)' }} />
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>Your account is pending approval</div>
+        <div style={{ fontSize: 13, maxWidth: 380 }}>
+          Someone needs to approve your account before you can start using it. You'll be able to sign
+          in normally as soon as that happens — no need to sign up again.
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => supabase.auth.signOut()}>
+          <LogOut size={14} /> Sign Out
+        </button>
       </div>
     )
   }
@@ -374,6 +390,94 @@ function ConfigMissing() {
   )
 }
 
+// New accounts need this email's approval before they can use the app.
+const ADMIN_EMAIL = 'etaxbir@gmail.com'
+
+function AdminConsole() {
+  const [rows, setRows] = useState(null)
+  const [error, setError] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+
+  async function load() {
+    setError(null)
+    const { data, error: err } = await supabase
+      .from('settings')
+      .select('user_id, email, company, approved, updated_at')
+      .order('updated_at', { ascending: false })
+    if (err) setError(err.message)
+    else setRows(data)
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function setApproved(userId, approved) {
+    setBusyId(userId)
+    const { error: err } = await supabase.from('settings').update({ approved }).eq('user_id', userId)
+    if (err) showToast(err.message, 'error')
+    await load()
+    setBusyId(null)
+  }
+
+  const pending = (rows || []).filter(r => !r.approved)
+  const approved = (rows || []).filter(r => r.approved)
+
+  return (
+    <div style={{ minHeight: '100dvh', background: 'var(--bg)', padding: '32px 24px' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-1)' }}>Account Approvals</h1>
+          <button className="btn btn-ghost btn-sm" onClick={() => supabase.auth.signOut()}>
+            <LogOut size={14} /> Sign Out
+          </button>
+        </div>
+
+        {error && <div style={{ color: 'var(--red)', marginBottom: 16 }}>{error}</div>}
+        {!rows && !error && <div style={{ color: 'var(--text-2)' }}><Loader2 size={16} className="spin" /> Loading…</div>}
+
+        {rows && (
+          <>
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-title" style={{ marginBottom: 12 }}>
+                Pending Approval {pending.length > 0 && <span className="badge badge-amber" style={{ marginLeft: 6 }}>{pending.length}</span>}
+              </div>
+              {pending.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Nothing waiting on you.</div>
+              ) : pending.map(r => (
+                <div key={r.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.company || '(no company name yet)'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.email || r.user_id}</div>
+                  </div>
+                  <button className="btn btn-primary btn-sm" disabled={busyId === r.user_id} onClick={() => setApproved(r.user_id, true)}>
+                    Approve
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="card">
+              <div className="card-title" style={{ marginBottom: 12 }}>Approved Accounts</div>
+              {approved.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--text-3)' }}>None yet.</div>
+              ) : approved.map(r => (
+                <div key={r.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.company || '(no company name yet)'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.email || r.user_id}</div>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" disabled={busyId === r.user_id} onClick={() => setApproved(r.user_id, false)}>
+                    Revoke
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function AppInner() {
   const [session, setSession] = useState(undefined) // undefined = checking, null = signed out
 
@@ -399,8 +503,17 @@ function AppInner() {
 
   if (!session) return <><ToastHost /><ConnectivityWatcher /><Login /></>
 
+  if (session.user.email === ADMIN_EMAIL) {
+    return (
+      <>
+        <ToastHost /><ConnectivityWatcher />
+        <AdminConsole />
+      </>
+    )
+  }
+
   return (
-    <StoreProvider userId={session.user.id} initialCompany={session.user.user_metadata?.company_name}>
+    <StoreProvider userId={session.user.id} initialCompany={session.user.user_metadata?.company_name} userEmail={session.user.email}>
       <ToastHost /><ConnectivityWatcher />
       <AppShell userEmail={session.user.email} />
     </StoreProvider>

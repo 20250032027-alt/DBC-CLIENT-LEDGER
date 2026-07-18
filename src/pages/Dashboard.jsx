@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { useTheme } from '../lib/theme.jsx'
-import { fmt, fmtDate } from '../utils'
+import { fmt, fmtDate, postedOnly } from '../utils'
 import {
   Users, FileText, Receipt, TrendingUp, TrendingDown,
   ArrowUpRight, ArrowDownRight, Circle, RefreshCw,
@@ -51,7 +51,8 @@ const CustomTooltip = ({ active, payload, label }) => {
 }
 
 export default function Dashboard() {
-  const { clients, vouchers, bills, settings, refresh, loading } = useStore()
+  const { clients, vouchers: allVouchers, bills, settings, refresh, loading } = useStore()
+  const vouchers = postedOnly(allVouchers)
   const cur = settings.currency
   const { theme } = useTheme()
   const gridStroke = theme === 'dark' ? '#2a3347' : '#e2e6ee'

@@ -1,6 +1,6 @@
 import { useStore } from '../store/useStore.jsx'
 import { useTheme } from '../lib/theme.jsx'
-import { fmt, fmtDate } from '../utils'
+import { fmt, fmtDate, postedOnly } from '../utils'
 import { ArrowUpRight, ArrowDownRight, Waves } from 'lucide-react'
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 
@@ -43,7 +43,8 @@ function classify(entries = []) {
 }
 
 export default function CashFlow() {
-  const { vouchers, bills, settings } = useStore()
+  const { vouchers: allVouchers, bills, settings } = useStore()
+  const vouchers = postedOnly(allVouchers)
   const cur = settings.currency
   const { theme } = useTheme()
   const gridStroke = theme === 'dark' ? '#2a3347' : '#e2e6ee'

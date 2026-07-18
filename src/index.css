@@ -575,6 +575,17 @@ tbody td {
   color: var(--text-2);
 }
 
+/* Debit/Credit amount fields: plain typing, no up/down stepper arrows */
+.input-no-spinner::-webkit-outer-spin-button,
+.input-no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.input-no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 .row-actions {
   display: flex;
   align-items: center;
@@ -838,4 +849,11 @@ tbody tr:hover .row-actions { opacity: 1; }
 @media (max-width: 480px) {
   .topbar-date { display: none; }
   .stat-value { font-size: 18px; }
+}
+
+/* Install banner is mobile-focused; hide it on desktop-sized viewports */
+@media (min-width: 769px) {
+  .install-banner {
+    display: none;
+  }
 }

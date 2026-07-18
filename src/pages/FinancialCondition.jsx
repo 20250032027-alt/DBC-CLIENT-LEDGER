@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt } from '../utils'
+import { fmt, postedOnly } from '../utils'
 import { BarChart3, X, Download } from 'lucide-react'
 
 async function exportFinancialReportToExcel({
@@ -206,7 +206,8 @@ function DateLabel({ label, value }) {
 }
 
 export default function FinancialCondition() {
-  const { vouchers, bills, accounts, settings } = useStore()
+  const { vouchers: allVouchers, bills, accounts, settings } = useStore()
+  const vouchers = postedOnly(allVouchers)
   const cur = settings.currency
 
   // Balance Sheet: "as of" date — include all vouchers up to and including this date

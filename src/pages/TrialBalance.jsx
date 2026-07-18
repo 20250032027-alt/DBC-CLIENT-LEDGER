@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate } from '../utils'
+import { fmt, fmtDate, postedOnly } from '../utils'
 import { Scale, CheckCircle, AlertCircle, Download, ChevronDown, ChevronUp } from 'lucide-react'
 
 function buildTrialBalance(vouchers) {
@@ -60,7 +60,7 @@ function categorize(account, typeMap) {
 export default function TrialBalance() {
   const { vouchers, accounts, settings } = useStore()
   const cur = settings.currency
-  const rows = buildTrialBalance(vouchers)
+  const rows = buildTrialBalance(postedOnly(vouchers))
   const [expanded, setExpanded] = useState(new Set())
   function toggle(account) {
     setExpanded(prev => {
