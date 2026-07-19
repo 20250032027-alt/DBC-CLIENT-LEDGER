@@ -31,7 +31,7 @@ export async function queueWrite(table, op, record, { silent = false } = {}) {
   } else {
     await db[table].put({ ...record, updatedAt: now, _dirty: 1, _deleted: 0 })
   }
-  await db.outbox.add({ table, recordId: pkVal, op, payload: op === 'delete' ? null : { ...record, updatedAt: now }, ts: now })
+  await db.outbox.add({ table, recordId: pkVal, op, payload: op === 'delete' ? null : { ...record, updatedAt: now }, ts: now, userId })
 
   if (navigator.onLine) {
     syncNow()
@@ -89,7 +89,7 @@ async function pullTable(table) {
 // ---- push: replay the outbox in order ----
 
 async function pushOutbox() {
-  const entries = await db.outbox.orderBy('seq').toArray()
+  const entries = await db.outbox.where('userId').equals(userId).sortBy('seq')
   // Any error here (network drop, auth expiry, validation failure) propagates
   // up and stops the loop — remaining outbox entries stay queued in order and
   // get retried on the next sync pass rather than being skipped or reordered.
@@ -163,5 +163,6 @@ export function stopSync() {
 }
 
 export async function pendingCount() {
-  return db.outbox.count()
+  if (!userId) return 0
+  return db.outbox.where('userId').equals(userId).count()
 }

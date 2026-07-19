@@ -397,6 +397,7 @@ function AdminConsole({ onView }) {
   const [rows, setRows] = useState(null)
   const [error, setError] = useState(null)
   const [busyId, setBusyId] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   async function load() {
     setError(null)
@@ -408,7 +409,20 @@ function AdminConsole({ onView }) {
     else setRows(data)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    // New signups can take a moment to actually reach the cloud — poll
+    // periodically so a pending account shows up without needing a manual
+    // page reload to notice it.
+    const interval = setInterval(load, 20000)
+    return () => clearInterval(interval)
+  }, [])
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    await load()
+    setRefreshing(false)
+  }
 
   async function setApproved(userId, approved) {
     setBusyId(userId)
@@ -426,9 +440,14 @@ function AdminConsole({ onView }) {
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-1)' }}>Account Approvals</h1>
-          <button className="btn btn-ghost btn-sm" onClick={() => supabase.auth.signOut()}>
-            <LogOut size={14} /> Sign Out
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" disabled={refreshing} onClick={handleRefresh}>
+              <RefreshCw size={14} className={refreshing ? 'spin' : ''} /> Refresh
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => supabase.auth.signOut()}>
+              <LogOut size={14} /> Sign Out
+            </button>
+          </div>
         </div>
 
         {error && <div style={{ color: 'var(--red)', marginBottom: 16 }}>{error}</div>}
