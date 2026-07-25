@@ -3,12 +3,18 @@ import { useStore } from '../store/useStore.jsx'
 import { fmt, postedOnly } from '../utils'
 import { Printer } from 'lucide-react'
 
-function accountTotal(vouchers, accountName) {
+// mode 'credit' sums credit-debit (liability/revenue convention, e.g. VAT
+// Payable, Sales Revenue). mode 'debit' sums debit-credit (asset convention,
+// e.g. Input VAT — purchases debit this account, increasing the credit
+// available against Output Tax).
+function accountTotal(vouchers, accountName, mode = 'credit') {
   let total = 0
   vouchers.forEach(v => {
     ;(v.entries || []).forEach(e => {
       if ((e.account || '').trim().toLowerCase() !== accountName.toLowerCase()) return
-      total += parseFloat(e.credit || 0) - parseFloat(e.debit || 0)
+      const debit = parseFloat(e.debit || 0)
+      const credit = parseFloat(e.credit || 0)
+      total += mode === 'debit' ? debit - credit : credit - debit
     })
   })
   return total
@@ -21,7 +27,7 @@ function quarterRange(year, q) {
   return { from, to }
 }
 
-function printTaxReturn({ settings, scheme, rate, from, to, grossSales, taxDue, cur }) {
+function printTaxReturn({ settings, scheme, rate, from, to, grossSales, taxDue, inputTax, netTaxDue, cur }) {
   const w = window.open('', '_blank', 'width=800,height=700')
   const title = scheme === 'vat' ? 'VAT Return Summary' : 'Percentage Tax Return Summary'
   w.document.write(`<!DOCTYPE html>
@@ -62,13 +68,19 @@ function printTaxReturn({ settings, scheme, rate, from, to, grossSales, taxDue, 
     <tr><td>Registration Type</td><td class="r">${scheme === 'vat' ? 'VAT-Registered' : 'Non-VAT (Percentage Tax)'}</td></tr>
     <tr><td>Tax Rate</td><td class="r">${rate}%</td></tr>
     <tr><td>Gross Sales / Receipts</td><td class="r">${fmt(grossSales, cur)}</td></tr>
-    <tr class="total"><td>${scheme === 'vat' ? 'Output Tax Due' : 'Percentage Tax Due'}</td><td class="r">${fmt(taxDue, cur)}</td></tr>
+    ${scheme === 'vat' ? `
+    <tr><td>Output Tax Due</td><td class="r">${fmt(taxDue, cur)}</td></tr>
+    <tr><td>Less: Total Input Tax</td><td class="r">${fmt(inputTax, cur)}</td></tr>
+    <tr class="total"><td>Net VAT Payable</td><td class="r">${fmt(netTaxDue, cur)}</td></tr>
+    ` : `
+    <tr class="total"><td>Percentage Tax Due</td><td class="r">${fmt(taxDue, cur)}</td></tr>
+    `}
   </table>
 
   <div class="disclaimer">
     This is a computed summary from posted vouchers in DBC Client Ledger, meant to help prepare your
     BIR filing — it is <strong>not</strong> an official government form.
-    ${scheme === 'vat' ? 'It reflects Output Tax only and does not include Input VAT/creditable purchases, which should be factored in separately.' : ''}
+    ${scheme === 'vat' ? 'Total Input Tax reflects what has been posted to the Input VAT account from purchase vouchers — verify it against your actual creditable purchases.' : ''}
     It also does not include prior-period credits, penalties, surcharges, or interest. Please verify
     all figures against your own records before filing with the BIR.
   </div>
@@ -103,6 +115,13 @@ export default function TaxReturn() {
 
   const grossSales = useMemo(() => accountTotal(periodVouchers, 'Sales Revenue'), [periodVouchers])
   const taxDue = useMemo(() => accountTotal(periodVouchers, taxAccountName), [periodVouchers, taxAccountName])
+  // Input tax only applies to VAT-registered filers — percentage tax has no
+  // input tax credit concept under BIR rules.
+  const inputTax = useMemo(
+    () => (scheme === 'vat' ? accountTotal(periodVouchers, 'Input VAT', 'debit') : 0),
+    [periodVouchers, scheme]
+  )
+  const netTaxDue = taxDue - inputTax
 
   const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i)
 
@@ -115,7 +134,7 @@ export default function TaxReturn() {
         </div>
         <button
           className="btn btn-ghost"
-          onClick={() => printTaxReturn({ settings, scheme, rate, from, to, grossSales, taxDue, cur })}
+          onClick={() => printTaxReturn({ settings, scheme, rate, from, to, grossSales, taxDue, inputTax, netTaxDue, cur })}
         >
           <Printer size={15} /> Print / Save PDF
         </button>
@@ -160,15 +179,23 @@ export default function TaxReturn() {
         <Row label="Registration Type" value={scheme === 'vat' ? 'VAT-Registered' : 'Non-VAT (Percentage Tax)'} />
         <Row label="Tax Rate" value={`${rate}%`} />
         <Row label="Gross Sales / Receipts" value={fmt(grossSales, cur)} mono />
-        <Row label={scheme === 'vat' ? 'Output Tax Due' : 'Percentage Tax Due'} value={fmt(taxDue, cur)} mono bold color="var(--amber)" topBorder />
+        {scheme === 'vat' ? (
+          <>
+            <Row label="Output Tax Due" value={fmt(taxDue, cur)} mono />
+            <Row label="Total Input Tax" value={fmt(inputTax, cur)} mono />
+            <Row label="Net VAT Payable" value={fmt(netTaxDue, cur)} mono bold color="var(--amber)" topBorder />
+          </>
+        ) : (
+          <Row label="Percentage Tax Due" value={fmt(taxDue, cur)} mono bold color="var(--amber)" topBorder />
+        )}
 
         <div style={{
           fontSize: 11, color: 'var(--text-3)', background: 'var(--surface2)',
           borderRadius: 'var(--radius-sm)', padding: '10px 12px', marginTop: 16, lineHeight: 1.7,
         }}>
-          Computed from your posted vouchers — this is a prep aid, not an official BIR form. It doesn't
-          include {scheme === 'vat' ? 'Input VAT, ' : ''}prior-period credits, penalties, or interest.
-          Verify before filing.
+          Computed from your posted vouchers — this is a prep aid, not an official BIR form.
+          {scheme === 'vat' ? ' Total Input Tax reflects amounts posted to the Input VAT account.' : ''} It doesn't
+          include prior-period credits, penalties, or interest. Verify before filing.
         </div>
       </div>
     </div>

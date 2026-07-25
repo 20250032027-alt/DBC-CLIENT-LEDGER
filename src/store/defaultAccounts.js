@@ -8,6 +8,7 @@ export const DEFAULT_ACCOUNTS = [
   { code: '1100', name: 'Accounts Receivable', type: 'asset', description: 'Amounts owed by clients' },
   { code: '1200', name: 'Inventory', type: 'asset', description: 'Goods held for sale' },
   { code: '1300', name: 'Prepaid Expenses', type: 'asset', description: 'Expenses paid in advance' },
+  { code: '1350', name: 'Input VAT', type: 'asset', description: 'Creditable input VAT on purchases (VAT-registered businesses)' },
   { code: '1400', name: 'Equipment', type: 'asset', description: 'Office and operating equipment' },
   { code: '2000', name: 'Accounts Payable', type: 'liability', description: 'Amounts owed to suppliers' },
   { code: '2100', name: 'Unearned Revenue', type: 'liability', description: 'Payments received for work not yet done' },
