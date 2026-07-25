@@ -14,6 +14,8 @@ import TrialBalance from './pages/TrialBalance'
 import AccountListing from './pages/AccountListing'
 import CashFlow from './pages/CashFlow'
 import FinancialCondition from './pages/FinancialCondition'
+import TaxReport from './pages/TaxReport'
+import TaxReturn from './pages/TaxReturn'
 import Billing from './pages/Billing'
 import Settings from './pages/Settings'
 import {
@@ -21,6 +23,7 @@ import {
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
+  FileBarChart, FileCheck,
 } from 'lucide-react'
 
 const NAV = [
@@ -32,6 +35,8 @@ const NAV = [
   { id: 'account-listing', label: 'Account Listing', icon: BookOpen },
   { id: 'cash-flow', label: 'Cash Flow', icon: Waves },
   { id: 'financial', label: 'Financial Reports', icon: BarChart3 },
+  { id: 'tax-report', label: 'Tax Report', icon: FileBarChart },
+  { id: 'tax-return', label: 'Tax Return', icon: FileCheck },
   { id: 'billing', label: 'Billing', icon: Receipt },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ]
@@ -39,13 +44,13 @@ const NAV = [
 const PAGE_TITLES = {
   dashboard: 'Dashboard', clients: 'Clients', vouchers: 'Vouchers',
   accounts: 'Chart of Accounts', 'trial-balance': 'Trial Balance', 'account-listing': 'Account Listing', 'cash-flow': 'Cash Flow',
-  financial: 'Financial Reports', billing: 'Billing', settings: 'Settings',
+  financial: 'Financial Reports', 'tax-report': 'Tax Report', 'tax-return': 'Tax Return', billing: 'Billing', settings: 'Settings',
 }
 
 const PAGES = {
   dashboard: Dashboard, clients: Clients, vouchers: Vouchers,
   accounts: ChartOfAccounts, 'trial-balance': TrialBalance, 'account-listing': AccountListing, 'cash-flow': CashFlow,
-  financial: FinancialCondition, billing: Billing, settings: Settings,
+  financial: FinancialCondition, 'tax-report': TaxReport, 'tax-return': TaxReturn, billing: Billing, settings: Settings,
 }
 
 function ToastHost() {

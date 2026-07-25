@@ -1,7 +1,8 @@
+import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { useTheme } from '../lib/theme.jsx'
 import { fmt, fmtDate, postedOnly } from '../utils'
-import { ArrowUpRight, ArrowDownRight, Waves } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, Waves, Download, X } from 'lucide-react'
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -42,6 +43,89 @@ function classify(entries = []) {
   return 'operating'
 }
 
+// The account(s) on the other side of the cash movement — what the
+// transaction was actually *for*, e.g. "Sales Revenue" or "Fuel, Oil & Gas".
+function counterAccountLabel(entries = []) {
+  const others = [...new Set(entries.filter(e => !isCashAccount(e.account)).map(e => e.account).filter(Boolean))]
+  return others.length ? others.join(' + ') : '(unspecified)'
+}
+
+function groupByCounterAccount(txns) {
+  const map = {}
+  txns.forEach(v => {
+    const key = counterAccountLabel(v.entries)
+    map[key] = (map[key] || 0) + v.delta
+  })
+  return Object.entries(map)
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+}
+
+async function exportCashFlowToExcel({ from, to, beginningBalance, operatingIn, operatingOut, investingNet, financingNet, netChange, endingBalance, operating, investing, financing }) {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+  const MONEY = '#,##0.00;(#,##0.00);"-"'
+
+  function makeSheet(rows) {
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 34 }, { wch: 18 }]
+    Object.keys(ws).forEach(ref => {
+      if (ref[0] === '!') return
+      if (typeof ws[ref].v === 'number') ws[ref].z = MONEY
+    })
+    return ws
+  }
+
+  const period = from || to ? `${from || '…'} → ${to || '…'}` : 'All dates'
+
+  const summaryRows = [
+    ['STATEMENT OF CASH FLOWS — SUMMARY'],
+    ['Period', period],
+    [],
+    ['Beginning Cash Balance', beginningBalance],
+    [],
+    ['Cash from Operating Activities'],
+    ['  Cash Receipts', operatingIn],
+    ['  Cash Payments', -operatingOut],
+    ['Net Cash from Operating Activities', operatingIn - operatingOut],
+    [],
+    ['Net Cash from Investing Activities', investingNet],
+    [],
+    ['Net Cash from Financing Activities', financingNet],
+    [],
+    ['Net Increase (Decrease) in Cash', netChange],
+    ['Ending Cash Balance', endingBalance],
+  ]
+
+  function detailRows(title, txns, net) {
+    return [
+      [title.toUpperCase()],
+      ...txns.map(v => ['', fmtDate(v.date || v.createdAt), `${v.number} — ${counterAccountLabel(v.entries)}${v.memo ? ' — ' + v.memo : ''}`, v.delta]),
+      ['', '', `Net Cash from ${title}`, net],
+      [],
+    ]
+  }
+
+  const detailSheetRows = [
+    ['STATEMENT OF CASH FLOWS — DETAIL'],
+    ['Period', period],
+    [],
+    ['', '', 'Beginning Cash Balance', beginningBalance],
+    [],
+    ...detailRows('Operating Activities', operating, operatingIn - operatingOut),
+    ...detailRows('Investing Activities', investing, investingNet),
+    ...detailRows('Financing Activities', financing, financingNet),
+    ['', '', 'Net Increase (Decrease) in Cash', netChange],
+    ['', '', 'Ending Cash Balance', endingBalance],
+  ]
+
+  XLSX.utils.book_append_sheet(wb, makeSheet(summaryRows), 'Cash Flow Summary')
+  XLSX.utils.book_append_sheet(wb, makeSheet(detailSheetRows), 'Cash Flow Detail')
+
+  const dateStr = new Date().toISOString().slice(0, 10)
+  XLSX.writeFile(wb, `dbc-client-ledger-cash-flow-${dateStr}.xlsx`)
+}
+
 export default function CashFlow() {
   const { vouchers: allVouchers, bills, settings } = useStore()
   const vouchers = postedOnly(allVouchers)
@@ -49,6 +133,10 @@ export default function CashFlow() {
   const { theme } = useTheme()
   const gridStroke = theme === 'dark' ? '#2a3347' : '#e2e6ee'
   const tickFill = theme === 'dark' ? '#64748b' : '#5b6478'
+
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [exporting, setExporting] = useState(false)
 
   const cashVouchers = vouchers
     .map(v => ({ ...v, delta: cashDelta(v.entries), bucket: classify(v.entries) }))
@@ -75,6 +163,38 @@ export default function CashFlow() {
   const financingNet = financing.reduce((s, v) => s + v.delta, 0)
 
   const netCash = operatingIn - operatingOut + investingNet + financingNet
+
+  // ── Formal Statement of Cash Flows (Summary + Detail) for a selectable
+  // period — separate from the always-all-time dashboard stats above, since
+  // a real report needs to reconcile a beginning balance to an ending one
+  // for a specific date range, the way an accountant would actually use it.
+  const periodTxns = useMemo(() => cashVouchers.filter(v => {
+    if (from && v.date && v.date < from) return false
+    if (to && v.date && v.date > to) return false
+    return true
+  }), [cashVouchers, from, to])
+
+  const beginningBalance = useMemo(() => {
+    if (!from) return 0
+    return cashVouchers.filter(v => v.date && v.date < from).reduce((s, v) => s + v.delta, 0)
+  }, [cashVouchers, from])
+
+  const periodOperating = periodTxns.filter(v => v.bucket === 'operating')
+  const periodInvesting = periodTxns.filter(v => v.bucket === 'investing')
+  const periodFinancing = periodTxns.filter(v => v.bucket === 'financing')
+
+  const periodOperatingIn = periodOperating.filter(v => v.delta > 0).reduce((s, v) => s + v.delta, 0)
+  const periodOperatingOut = periodOperating.filter(v => v.delta < 0).reduce((s, v) => s - v.delta, 0)
+  const periodInvestingNet = periodInvesting.reduce((s, v) => s + v.delta, 0)
+  const periodFinancingNet = periodFinancing.reduce((s, v) => s + v.delta, 0)
+  const periodNetChange = periodOperatingIn - periodOperatingOut + periodInvestingNet + periodFinancingNet
+  const endingBalance = beginningBalance + periodNetChange
+
+  const operatingByAccount = useMemo(() => groupByCounterAccount(periodOperating), [periodOperating])
+  const investingByAccount = useMemo(() => groupByCounterAccount(periodInvesting), [periodInvesting])
+  const financingByAccount = useMemo(() => groupByCounterAccount(periodFinancing), [periodFinancing])
+
+  const hasPeriodData = periodTxns.length > 0
 
   // Monthly data
   const months = []
@@ -217,6 +337,152 @@ export default function CashFlow() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* ── Statement of Cash Flows — Summary & Detail ────────────────── */}
+      <div className="page-header" style={{ marginTop: 8 }}>
+        <div>
+          <div className="page-h1" style={{ fontSize: 18 }}>Statement of Cash Flows</div>
+          <div className="page-sub">Summary and detailed reports for a specific period</div>
+        </div>
+        <button
+          className="btn btn-ghost"
+          disabled={!hasPeriodData || exporting}
+          onClick={async () => {
+            setExporting(true)
+            try {
+              await exportCashFlowToExcel({
+                from, to, beginningBalance,
+                operatingIn: periodOperatingIn, operatingOut: periodOperatingOut,
+                investingNet: periodInvestingNet, financingNet: periodFinancingNet,
+                netChange: periodNetChange, endingBalance,
+                operating: periodOperating, investing: periodInvesting, financing: periodFinancing,
+              })
+            } finally { setExporting(false) }
+          }}
+        >
+          <Download size={15} /> {exporting ? 'Exporting…' : 'Export to Excel'}
+        </button>
+      </div>
+
+      <div className="financial-date-toolbar" style={{
+        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
+        marginBottom: 16, padding: '12px 16px',
+        background: 'var(--surface2)', borderRadius: 'var(--radius-sm)',
+        border: '1px solid var(--border)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Period from</span>
+          <input className="form-input" type="date" value={from} onChange={e => setFrom(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', width: 140 }} />
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>to</span>
+          <input className="form-input" type="date" value={to} onChange={e => setTo(e.target.value)} style={{ fontSize: 12, padding: '5px 8px', width: 140 }} />
+        </div>
+        {(from || to) && (
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={() => { setFrom(''); setTo('') }}>
+            <X size={13} /> Clear dates
+          </button>
+        )}
+        {!from && (
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+            Set a "from" date to compute a beginning balance — without one, this covers all-time.
+          </span>
+        )}
+      </div>
+
+      {!hasPeriodData ? (
+        <div className="card">
+          <div className="empty-state">
+            <Waves size={28} color="var(--border2)" />
+            <div style={{ fontWeight: 600 }}>No cash transactions in this period</div>
+          </div>
+        </div>
+      ) : (
+        <div className="two-col" style={{ alignItems: 'start' }}>
+          {/* Summary */}
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 12 }}>Summary</div>
+            <CFRow label="Beginning Cash Balance" value={beginningBalance} cur={cur} bold />
+            <div style={{ height: 10 }} />
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6 }}>Operating Activities</div>
+            <CFRow label="Cash Receipts" value={periodOperatingIn} cur={cur} />
+            <CFRow label="Cash Payments" value={-periodOperatingOut} cur={cur} />
+            <CFRow label="Net Cash from Operating" value={periodOperatingIn - periodOperatingOut} cur={cur} bold topBorder />
+            <div style={{ height: 10 }} />
+            <CFRow label="Net Cash from Investing" value={periodInvestingNet} cur={cur} bold />
+            <div style={{ height: 10 }} />
+            <CFRow label="Net Cash from Financing" value={periodFinancingNet} cur={cur} bold />
+            <div style={{ height: 14 }} />
+            <CFRow label="Net Increase (Decrease) in Cash" value={periodNetChange} cur={cur} bold topBorder color={periodNetChange >= 0 ? 'var(--green)' : 'var(--red)'} />
+            <CFRow label="Ending Cash Balance" value={endingBalance} cur={cur} bold color={endingBalance >= 0 ? 'var(--green)' : 'var(--red)'} />
+          </div>
+
+          {/* Detail */}
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 12 }}>Detail</div>
+            <CashFlowDetailSection title="Operating Activities" byAccount={operatingByAccount} txns={periodOperating} net={periodOperatingIn - periodOperatingOut} cur={cur} />
+            <CashFlowDetailSection title="Investing Activities" byAccount={investingByAccount} txns={periodInvesting} net={periodInvestingNet} cur={cur} />
+            <CashFlowDetailSection title="Financing Activities" byAccount={financingByAccount} txns={periodFinancing} net={periodFinancingNet} cur={cur} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CFRow({ label, value, cur, bold, topBorder, color }) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13,
+      fontWeight: bold ? 700 : 400,
+      borderTop: topBorder ? '2px solid var(--border2)' : undefined,
+      marginTop: topBorder ? 4 : 0,
+    }}>
+      <span style={{ color: bold ? 'var(--text-1)' : 'var(--text-2)' }}>{label}</span>
+      <span style={{ fontFamily: 'var(--mono)', color: color || (bold ? 'var(--text-1)' : 'var(--text-2)') }}>{fmt(value, cur)}</span>
+    </div>
+  )
+}
+
+function CashFlowDetailSection({ title, byAccount, txns, net, cur }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-3)' }}>{title}</span>
+        {txns.length > 0 && (
+          <button className="btn-ghost" style={{ fontSize: 11, background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer' }} onClick={() => setExpanded(e => !e)}>
+            {expanded ? 'Show by account' : `Show all ${txns.length} transactions`}
+          </button>
+        )}
+      </div>
+
+      {txns.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: 'var(--text-3)', padding: '4px 0 10px' }}>No transactions</div>
+      ) : expanded ? (
+        <div style={{ marginBottom: 6 }}>
+          {txns.map(v => (
+            <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', fontSize: 12.5, borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {fmtDate(v.date || v.createdAt)} — {v.number} — {counterAccountLabel(v.entries)}
+              </span>
+              <span className="td-mono" style={{ flexShrink: 0, color: v.delta >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(v.delta, cur)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ marginBottom: 6 }}>
+          {byAccount.map(r => (
+            <div key={r.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-2)' }}>{r.name}</span>
+              <span className="td-mono" style={{ color: r.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(r.amount, cur)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, fontWeight: 700, borderTop: '2px solid var(--border2)' }}>
+        <span>Net Cash from {title}</span>
+        <span style={{ fontFamily: 'var(--mono)', color: net >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(net, cur)}</span>
       </div>
     </div>
   )
