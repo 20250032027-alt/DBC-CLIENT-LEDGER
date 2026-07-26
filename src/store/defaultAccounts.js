@@ -19,6 +19,7 @@ export const DEFAULT_ACCOUNTS = [
   { code: '3100', name: 'Retained Earnings', type: 'equity', description: 'Accumulated profits/losses' },
   { code: '4000', name: 'Sales Revenue', type: 'revenue', description: 'Revenue from goods sold' },
   { code: '4050', name: 'Sales Revenue - Exempt', type: 'revenue', description: 'VAT-exempt / zero-rated sales — post here instead of Sales Revenue so the Tax Report reports it correctly' },
+  { code: '4060', name: 'Sales Revenue - Senior Citizen Discount', type: 'revenue', description: 'Sales to senior citizens (RA 9994) — VAT-exempt and reported separately, like Sales Revenue - Exempt' },
   { code: '4100', name: 'Service Revenue', type: 'revenue', description: 'Revenue from services rendered' },
   { code: '5000', name: 'Cost of Goods Sold', type: 'expense', description: 'Direct cost of goods sold' },
   { code: '5100', name: 'Salaries Expense', type: 'expense', description: 'Employee salaries and wages' },
