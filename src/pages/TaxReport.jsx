@@ -3,22 +3,30 @@ import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate, postedOnly } from '../utils'
 import { FileBarChart, Download, X } from 'lucide-react'
 
+const EXEMPT_SALES_ACCOUNT = 'Sales Revenue - Exempt'
+
 // Sums debits/credits to a specific account name, across a set of vouchers —
 // the same "account activity" approach a Trial Balance uses, just scoped to
 // one liability account (VAT Payable or Percentage Tax Payable) so this
 // reflects what's actually posted in the books, not just an assumption about
 // which voucher types can affect it.
 //
-// Also carries payee/TIN/address off the voucher header and works out the
-// "vatable transaction" (the taxable base) as whatever was credited to a
-// revenue-type account in that same voucher — e.g. Dr Cash 11,200 / Cr Sales
-// Revenue 10,000 / Cr VAT Payable 1,200 → vatable amount 10,000.
+// Also carries payee/TIN/address off the voucher header and works out:
+//   - "vatable transaction": whatever was credited to a taxable revenue
+//     account (e.g. Sales Revenue, Service Revenue) in that same voucher —
+//     e.g. Dr Cash 11,200 / Cr Sales Revenue 10,000 / Cr VAT Payable 1,200
+//     → vatable amount 10,000.
+//   - "exempt sales": whatever was credited to the "Sales Revenue - Exempt"
+//     account in that voucher. A voucher posting only to the exempt account
+//     (no VAT Payable line) still gets pulled into the report this way —
+//     it just carries a tax amount of 0.
 function accountActivity(vouchers, accountName, accountTypeByName = {}) {
   let debit = 0, credit = 0
   const contributingVouchers = []
   vouchers.forEach(v => {
     let voucherAmount = 0
     let vatableAmount = 0
+    let exemptAmount = 0
     ;(v.entries || []).forEach(e => {
       const acctName = (e.account || '').trim().toLowerCase()
       const d = parseFloat(e.debit || 0)
@@ -28,15 +36,18 @@ function accountActivity(vouchers, accountName, accountTypeByName = {}) {
         credit += c
         voucherAmount += c - d
       }
-      if (accountTypeByName[acctName] === 'revenue') {
+      if (acctName === EXEMPT_SALES_ACCOUNT.toLowerCase()) {
+        exemptAmount += c - d
+      } else if (accountTypeByName[acctName] === 'revenue') {
         vatableAmount += c - d
       }
     })
-    if (Math.abs(voucherAmount) > 0.005) {
+    if (Math.abs(voucherAmount) > 0.005 || Math.abs(exemptAmount) > 0.005) {
       contributingVouchers.push({
         ...v,
         taxAmount: voucherAmount,
         vatableAmount,
+        exemptAmount,
         payee: v.payee || '',
         payeeTin: v.payeeTin || '',
         payeeAddress: v.payeeAddress || '',
@@ -57,7 +68,7 @@ function accountTotal(vouchers, accountName) {
   return total
 }
 
-async function exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, grossSales, taxActivity }) {
+async function exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, grossSales, exemptSales, taxActivity }) {
   const XLSX = await import('xlsx')
   const wb = XLSX.utils.book_new()
   const MONEY = '#,##0.00;(#,##0.00);"-"'
@@ -69,17 +80,18 @@ async function exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, 
     ['Rate', `${rate}%`],
     [],
     ['Gross Sales (period)', grossSales],
+    ['Exempt Sales (period)', exemptSales],
     [`Tax Due (${taxAccountName})`, taxActivity.net],
     [],
     ['SUPPORTING TRANSACTIONS'],
-    ['Date', 'Voucher #', 'Payee', 'TIN', 'Address', 'Nature of Payment', 'Vatable Transaction', 'Tax Amount'],
+    ['Date', 'Voucher #', 'Payee', 'TIN', 'Address', 'Nature of Payment', 'Vatable Transaction', 'Exempt Sales', 'Tax Amount'],
     ...taxActivity.contributingVouchers.map(v => [
       fmtDate(v.date || v.createdAt), v.number, v.payee || '', v.payeeTin || '', v.payeeAddress || '',
-      v.memo || '', v.vatableAmount, v.taxAmount,
+      v.memo || '', v.vatableAmount, v.exemptAmount, v.taxAmount,
     ]),
   ]
   const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 16 }, { wch: 28 }, { wch: 28 }, { wch: 18 }, { wch: 16 }]
+  ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 16 }, { wch: 28 }, { wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 16 }]
   Object.keys(ws).forEach(ref => {
     if (ref[0] === '!') return
     if (typeof ws[ref].v === 'number') ws[ref].z = MONEY
@@ -120,8 +132,9 @@ export default function TaxReport() {
     [periodVouchers, taxAccountName, accountTypeByName]
   )
   const grossSales = useMemo(() => accountTotal(periodVouchers, 'Sales Revenue'), [periodVouchers])
+  const exemptSales = useMemo(() => accountTotal(periodVouchers, EXEMPT_SALES_ACCOUNT), [periodVouchers])
 
-  const hasData = taxActivity.contributingVouchers.length > 0 || grossSales !== 0
+  const hasData = taxActivity.contributingVouchers.length > 0 || grossSales !== 0 || exemptSales !== 0
 
   return (
     <div className="page-content">
@@ -138,7 +151,7 @@ export default function TaxReport() {
           onClick={async () => {
             setExporting(true)
             try {
-              await exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, grossSales, taxActivity })
+              await exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, grossSales, exemptSales, taxActivity })
             } finally { setExporting(false) }
           }}
         >
@@ -170,7 +183,8 @@ export default function TaxReport() {
         borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: 16, lineHeight: 1.6,
       }}>
         This reflects what's posted to your books — {scheme === 'vat' ? 'Output VAT from Sales Revenue only' : 'Percentage Tax from Sales Revenue only'}.
-        {scheme === 'vat' && ' It doesn\'t track Input VAT/creditable purchases — factor those in separately before filing.'}
+        VAT-exempt or zero-rated sales posted to the "{EXEMPT_SALES_ACCOUNT}" account show up here too, with no tax amount.
+        {scheme === 'vat' && ' This report doesn\'t track Input VAT/creditable purchases — factor those in separately before filing.'}
       </div>
 
       {!hasData ? (
@@ -187,6 +201,10 @@ export default function TaxReport() {
             <div className="stat-card">
               <span className="stat-label">Gross Sales</span>
               <div className="stat-value" style={{ fontSize: 22 }}>{fmt(grossSales, cur)}</div>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">Exempt Sales</span>
+              <div className="stat-value" style={{ fontSize: 22 }}>{fmt(exemptSales, cur)}</div>
             </div>
             <div className="stat-card">
               <span className="stat-label">Tax Rate</span>
@@ -211,6 +229,7 @@ export default function TaxReport() {
                     <th>Address</th>
                     <th>Nature of Payment</th>
                     <th style={{ textAlign: 'right' }}>{scheme === 'vat' ? 'Vatable Transaction' : 'Taxable Transaction'}</th>
+                    <th style={{ textAlign: 'right' }}>Exempt Sales</th>
                     <th style={{ textAlign: 'right' }}>Tax Amount</th>
                   </tr>
                 </thead>
@@ -226,6 +245,7 @@ export default function TaxReport() {
                         <td style={{ fontSize: 13 }}>{v.payeeAddress || '—'}</td>
                         <td style={{ fontSize: 13 }}>{v.memo || '—'}</td>
                         <td className="td-mono" style={{ textAlign: 'right' }}>{fmt(v.vatableAmount, cur)}</td>
+                        <td className="td-mono" style={{ textAlign: 'right' }}>{v.exemptAmount ? fmt(v.exemptAmount, cur) : '—'}</td>
                         <td className="td-mono" style={{ textAlign: 'right' }}>{fmt(v.taxAmount, cur)}</td>
                       </tr>
                     ))}
