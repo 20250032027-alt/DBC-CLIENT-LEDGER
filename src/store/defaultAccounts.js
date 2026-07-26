@@ -14,6 +14,7 @@ export const DEFAULT_ACCOUNTS = [
   { code: '2100', name: 'Unearned Revenue', type: 'liability', description: 'Payments received for work not yet done' },
   { code: '2200', name: 'VAT Payable', type: 'liability', description: 'Output VAT due to the BIR (VAT-registered businesses)' },
   { code: '2210', name: 'Percentage Tax Payable', type: 'liability', description: 'Percentage tax due to the BIR (Non-VAT businesses)' },
+  { code: '2220', name: 'Withholding Tax Payable', type: 'liability', description: 'Expanded/creditable withholding tax withheld from payees, due to the BIR' },
   { code: '3000', name: 'Capital', type: 'equity', description: "Owner's capital contribution" },
   { code: '3100', name: 'Retained Earnings', type: 'equity', description: 'Accumulated profits/losses' },
   { code: '4000', name: 'Sales Revenue', type: 'revenue', description: 'Revenue from goods sold' },
