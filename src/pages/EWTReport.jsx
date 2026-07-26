@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, postedOnly } from '../utils'
+import { fmt, fmtDate, postedOnly, normalizeTin } from '../utils'
 import { Printer } from 'lucide-react'
 
 const WT_ACCOUNT_NAME = 'Withholding Tax Payable'
@@ -41,7 +41,7 @@ function buildRows(vouchers, accountTypeByName) {
       date: v.date,
       number: v.number,
       payee: v.payee || '(unnamed payee)',
-      tin: v.payeeTin || '—',
+      tin: v.payeeTin ? normalizeTin(v.payeeTin) : '—',
       nature: v.memo || '—',
       gross,
       rate: gross > 0 ? (taxWithheld / gross) * 100 : 0,
@@ -80,7 +80,7 @@ function printEWTReport({ settings, from, to, rows, totals, cur }) {
   <div class="header">
     <div class="firm-name">${settings.company || 'Your Company'}</div>
     <div class="firm-meta">
-      ${settings.tin ? `TIN: ${settings.tin}<br>` : ''}
+      ${settings.tin ? `TIN: ${normalizeTin(settings.tin)}<br>` : ''}
       ${(settings.address || '').replace(/\n/g, '<br>')}
     </div>
   </div>
@@ -195,7 +195,7 @@ export default function EWTReport() {
       <div className="card">
         <div className="card-title" style={{ marginBottom: 4 }}>Expanded Withholding Tax Summary</div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 16 }}>
-          {settings.company} {settings.tin ? `· TIN ${settings.tin}` : ''}
+          {settings.company} {settings.tin ? `· TIN ${normalizeTin(settings.tin)}` : ''}
         </div>
 
         <div style={{ overflowX: 'auto' }}>

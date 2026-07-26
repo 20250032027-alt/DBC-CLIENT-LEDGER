@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, nextBillNumber } from '../utils'
+import { fmt, fmtDate, nextBillNumber, normalizeTin } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, Receipt, CheckCircle, Clock, AlertTriangle, Printer } from 'lucide-react'
 
 // ── Print Invoice ────────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ function printInvoice(bill, settings, clients = []) {
       ${settings.address
         ? `<div class="firm-details">${settings.address.replace(/\n/g, '<br>')}</div>`
         : ''}
-      ${settings.tin ? `<div class="firm-details">TIN: ${settings.tin}</div>` : ''}
+      ${settings.tin ? `<div class="firm-details">TIN: ${normalizeTin(settings.tin)}</div>` : ''}
     </div>
     <div class="invoice-block">
       <div class="invoice-label">INVOICE</div>
@@ -264,7 +264,7 @@ function printInvoice(bill, settings, clients = []) {
       <div class="section-label">Bill To</div>
       <div class="client-name">${bill.clientName || '—'}</div>
       ${client?.address ? `<div style="font-size:12px;color:#555;margin-top:2px">${client.address}</div>` : ''}
-      ${client?.tin ? `<div style="font-size:12px;color:#555;margin-top:2px">TIN: ${client.tin}</div>` : ''}
+      ${client?.tin ? `<div style="font-size:12px;color:#555;margin-top:2px">TIN: ${normalizeTin(client.tin)}</div>` : ''}
     </div>
     <div style="text-align:right">
       <div class="section-label">Status</div>

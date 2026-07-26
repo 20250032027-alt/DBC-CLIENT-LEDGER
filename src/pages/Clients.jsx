@@ -173,7 +173,7 @@ export default function Clients() {
                       <div>
                         <div style={{ fontWeight: 500, fontSize: 13 }}>{c.name}</div>
                         {c.company && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{c.company}</div>}
-                        {c.tin && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>TIN {c.tin}</div>}
+                        {c.tin && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>TIN {normalizeTin(c.tin)}</div>}
                       </div>
                     </div>
                   </td>

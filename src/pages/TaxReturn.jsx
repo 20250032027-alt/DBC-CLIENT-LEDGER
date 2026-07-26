@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, postedOnly } from '../utils'
+import { fmt, postedOnly, normalizeTin } from '../utils'
 import { Printer } from 'lucide-react'
 
 // mode 'credit' sums credit-debit (liability/revenue convention, e.g. VAT
@@ -56,7 +56,7 @@ function printTaxReturn({ settings, scheme, rate, from, to, grossSales, taxDue, 
   <div class="header">
     <div class="firm-name">${settings.company || 'Your Company'}</div>
     <div class="firm-meta">
-      ${settings.tin ? `TIN: ${settings.tin}<br>` : ''}
+      ${settings.tin ? `TIN: ${normalizeTin(settings.tin)}<br>` : ''}
       ${(settings.address || '').replace(/\n/g, '<br>')}
     </div>
   </div>
@@ -173,7 +173,7 @@ export default function TaxReturn() {
           {scheme === 'vat' ? 'VAT Return Summary' : 'Percentage Tax Return Summary'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 16 }}>
-          {settings.company} {settings.tin ? `· TIN ${settings.tin}` : ''}
+          {settings.company} {settings.tin ? `· TIN ${normalizeTin(settings.tin)}` : ''}
         </div>
 
         <Row label="Registration Type" value={scheme === 'vat' ? 'VAT-Registered' : 'Non-VAT (Percentage Tax)'} />

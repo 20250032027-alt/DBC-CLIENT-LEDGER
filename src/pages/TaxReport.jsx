@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, postedOnly } from '../utils'
+import { fmt, fmtDate, postedOnly, normalizeTin } from '../utils'
 import { FileBarChart, Download, X } from 'lucide-react'
 
 // Special revenue accounts that are VAT-exempt but still need to show up in
@@ -65,7 +65,7 @@ function accountActivity(vouchers, accountName, accountTypeByName = {}) {
         vatableAmount,
         special,
         payee: v.payee || '',
-        payeeTin: v.payeeTin || '',
+        payeeTin: v.payeeTin ? normalizeTin(v.payeeTin) : '',
         payeeAddress: v.payeeAddress || '',
       })
     }

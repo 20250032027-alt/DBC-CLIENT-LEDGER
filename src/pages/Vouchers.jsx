@@ -1060,7 +1060,7 @@ function printVoucher(voucher, settings, accounts = [], clients = []) {
       </div>
       <div class="firm-contact">
         ${(settings.address || '').replace(/\n/g, '<br>')}
-        ${settings.tin ? `<br>TIN: ${settings.tin}` : ''}
+        ${settings.tin ? `<br>TIN: ${normalizeTin(settings.tin)}` : ''}
       </div>
     </div>
 
@@ -1075,7 +1075,7 @@ function printVoucher(voucher, settings, accounts = [], clients = []) {
     </div>
     ${(voucher.payeeTin || voucher.payeeAddress) ? `
     <div style="display:flex; gap:24px; font-size:11px; color:#4b5563; margin:-10px 0 18px;">
-      ${voucher.payeeTin ? `<span>TIN: ${voucher.payeeTin}</span>` : ''}
+      ${voucher.payeeTin ? `<span>TIN: ${normalizeTin(voucher.payeeTin)}</span>` : ''}
       ${voucher.payeeAddress ? `<span>${voucher.payeeAddress}</span>` : ''}
     </div>` : ''}
 
