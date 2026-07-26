@@ -8,21 +8,39 @@ import { FileBarChart, Download, X } from 'lucide-react'
 // one liability account (VAT Payable or Percentage Tax Payable) so this
 // reflects what's actually posted in the books, not just an assumption about
 // which voucher types can affect it.
-function accountActivity(vouchers, accountName) {
+//
+// Also carries payee/TIN/address off the voucher header and works out the
+// "vatable transaction" (the taxable base) as whatever was credited to a
+// revenue-type account in that same voucher — e.g. Dr Cash 11,200 / Cr Sales
+// Revenue 10,000 / Cr VAT Payable 1,200 → vatable amount 10,000.
+function accountActivity(vouchers, accountName, accountTypeByName = {}) {
   let debit = 0, credit = 0
   const contributingVouchers = []
   vouchers.forEach(v => {
     let voucherAmount = 0
+    let vatableAmount = 0
     ;(v.entries || []).forEach(e => {
-      if ((e.account || '').trim().toLowerCase() !== accountName.toLowerCase()) return
+      const acctName = (e.account || '').trim().toLowerCase()
       const d = parseFloat(e.debit || 0)
       const c = parseFloat(e.credit || 0)
-      debit += d
-      credit += c
-      voucherAmount += c - d
+      if (acctName === accountName.toLowerCase()) {
+        debit += d
+        credit += c
+        voucherAmount += c - d
+      }
+      if (accountTypeByName[acctName] === 'revenue') {
+        vatableAmount += c - d
+      }
     })
     if (Math.abs(voucherAmount) > 0.005) {
-      contributingVouchers.push({ ...v, taxAmount: voucherAmount })
+      contributingVouchers.push({
+        ...v,
+        taxAmount: voucherAmount,
+        vatableAmount,
+        payee: v.payee || '',
+        payeeTin: v.payeeTin || '',
+        payeeAddress: v.payeeAddress || '',
+      })
     }
   })
   return { debit, credit, net: credit - debit, contributingVouchers }
@@ -54,13 +72,14 @@ async function exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, 
     [`Tax Due (${taxAccountName})`, taxActivity.net],
     [],
     ['SUPPORTING TRANSACTIONS'],
-    ['Date', 'Voucher #', 'Description', 'Tax Amount'],
+    ['Date', 'Voucher #', 'Payee', 'TIN', 'Address', 'Nature of Payment', 'Vatable Transaction', 'Tax Amount'],
     ...taxActivity.contributingVouchers.map(v => [
-      fmtDate(v.date || v.createdAt), v.number, v.memo || v.payee || '', v.taxAmount,
+      fmtDate(v.date || v.createdAt), v.number, v.payee || '', v.payeeTin || '', v.payeeAddress || '',
+      v.memo || '', v.vatableAmount, v.taxAmount,
     ]),
   ]
   const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 36 }, { wch: 16 }]
+  ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 16 }, { wch: 28 }, { wch: 28 }, { wch: 18 }, { wch: 16 }]
   Object.keys(ws).forEach(ref => {
     if (ref[0] === '!') return
     if (typeof ws[ref].v === 'number') ws[ref].z = MONEY
@@ -72,7 +91,7 @@ async function exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, 
 }
 
 export default function TaxReport() {
-  const { vouchers: allVouchers, settings } = useStore()
+  const { vouchers: allVouchers, accounts, settings } = useStore()
   const vouchers = postedOnly(allVouchers)
   const cur = settings.currency
 
@@ -84,13 +103,22 @@ export default function TaxReport() {
   const rate = scheme === 'vat' ? (settings.vatRate ?? 12) : (settings.percentageTaxRate ?? 3)
   const taxAccountName = scheme === 'vat' ? 'VAT Payable' : 'Percentage Tax Payable'
 
+  const accountTypeByName = useMemo(() => {
+    const map = {}
+    accounts.forEach(a => { map[(a.name || '').trim().toLowerCase()] = a.type })
+    return map
+  }, [accounts])
+
   const periodVouchers = useMemo(() => vouchers.filter(v => {
     if (from && v.date && v.date < from) return false
     if (to && v.date && v.date > to) return false
     return true
   }), [vouchers, from, to])
 
-  const taxActivity = useMemo(() => accountActivity(periodVouchers, taxAccountName), [periodVouchers, taxAccountName])
+  const taxActivity = useMemo(
+    () => accountActivity(periodVouchers, taxAccountName, accountTypeByName),
+    [periodVouchers, taxAccountName, accountTypeByName]
+  )
   const grossSales = useMemo(() => accountTotal(periodVouchers, 'Sales Revenue'), [periodVouchers])
 
   const hasData = taxActivity.contributingVouchers.length > 0 || grossSales !== 0
@@ -172,13 +200,17 @@ export default function TaxReport() {
 
           <div className="card">
             <div className="card-title" style={{ marginBottom: 12 }}>Supporting Transactions</div>
-            <div className="table-wrap" style={{ border: 'none' }}>
+            <div className="table-wrap" style={{ border: 'none', overflowX: 'auto' }}>
               <table>
                 <thead>
                   <tr>
                     <th>Date</th>
                     <th>Voucher #</th>
-                    <th>Description</th>
+                    <th>Payee</th>
+                    <th>TIN</th>
+                    <th>Address</th>
+                    <th>Nature of Payment</th>
+                    <th style={{ textAlign: 'right' }}>{scheme === 'vat' ? 'Vatable Transaction' : 'Taxable Transaction'}</th>
                     <th style={{ textAlign: 'right' }}>Tax Amount</th>
                   </tr>
                 </thead>
@@ -189,7 +221,11 @@ export default function TaxReport() {
                       <tr key={v.id}>
                         <td className="td-mono">{fmtDate(v.date || v.createdAt)}</td>
                         <td className="td-mono">{v.number}</td>
-                        <td style={{ fontSize: 13 }}>{v.memo || v.payee || '—'}</td>
+                        <td style={{ fontSize: 13 }}>{v.payee || '—'}</td>
+                        <td className="td-mono">{v.payeeTin || '—'}</td>
+                        <td style={{ fontSize: 13 }}>{v.payeeAddress || '—'}</td>
+                        <td style={{ fontSize: 13 }}>{v.memo || '—'}</td>
+                        <td className="td-mono" style={{ textAlign: 'right' }}>{fmt(v.vatableAmount, cur)}</td>
                         <td className="td-mono" style={{ textAlign: 'right' }}>{fmt(v.taxAmount, cur)}</td>
                       </tr>
                     ))}
