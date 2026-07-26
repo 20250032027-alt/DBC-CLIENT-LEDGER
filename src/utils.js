@@ -29,6 +29,24 @@ export function voucherTotals(entries = []) {
   return { debit, credit, balanced: Math.abs(debit - credit) < 0.01 }
 }
 
+// Formats a PH TIN as the user types, grouping digits 3-3-3-5
+// (xxx-xxx-xxx-xxxxx). The last group is the 5-digit branch code (BIR
+// assigns 00000 to individuals/head office). Non-digit characters are
+// stripped so pasted values with dashes/spaces still format correctly.
+export function formatTin(value) {
+  const digits = (value || '').replace(/\D/g, '').slice(0, 14)
+  const groups = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9), digits.slice(9, 14)]
+  return groups.filter(Boolean).join('-')
+}
+
+// Called on blur: a 9-digit TIN (no branch code typed) automatically gets
+// the standard 00000 branch code appended, formatted as xxx-xxx-xxx-00000.
+export function normalizeTin(value) {
+  const digits = (value || '').replace(/\D/g, '')
+  if (digits.length === 9) return formatTin(digits + '00000')
+  return formatTin(digits)
+}
+
 // Vouchers created through bulk import start as drafts (posted: false) and
 // shouldn't affect real financial reports until someone reviews and posts
 // them. Older vouchers (and every normal one entered by hand) have no

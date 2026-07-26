@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmtDate, fmt } from '../utils'
+import { fmtDate, fmt, formatTin, normalizeTin } from '../utils'
 import { Plus, Search, Trash2, Pencil, User, Building2, Phone, Mail, MapPin, X } from 'lucide-react'
 
 function ClientModal({ client, onClose, onSave }) {
@@ -64,9 +64,10 @@ function ClientModal({ client, onClose, onSave }) {
           <div className="form-group">
             <label className="form-label">TIN</label>
             <input className="form-input" value={form.tin}
-              onChange={e => set('tin', e.target.value)}
+              onChange={e => set('tin', formatTin(e.target.value))}
+              onBlur={e => set('tin', normalizeTin(e.target.value))}
               onKeyDown={e => e.key === 'Enter' && submit()}
-              placeholder="000-000-000-000" />
+              placeholder="000-000-000-00000" />
           </div>
           <div className="form-group form-col-full">
             <label className="form-label">Notes</label>

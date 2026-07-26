@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber } from '../utils'
+import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer } from 'lucide-react'
 
 const TYPES = ['sales', 'general', 'cash receipt', 'cash disbursement', 'expense', 'adjustment']
@@ -1476,7 +1476,12 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
             <>
               <div className="form-group">
                 <label className="form-label">Payee TIN</label>
-                <input className="form-input" value={form.payeeTin} onChange={e => setF('payeeTin', e.target.value)} placeholder="000-000-000-000" />
+                <input
+                  className="form-input" value={form.payeeTin}
+                  onChange={e => setF('payeeTin', formatTin(e.target.value))}
+                  onBlur={e => setF('payeeTin', normalizeTin(e.target.value))}
+                  placeholder="000-000-000-00000"
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">Payee Address</label>

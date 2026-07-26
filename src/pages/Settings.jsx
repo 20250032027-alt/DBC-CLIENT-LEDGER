@@ -5,6 +5,7 @@ import { getInstallState, promptInstall } from '../lib/installPrompt'
 import { clearLocalDb } from '../lib/db'
 import { stopSync } from '../lib/sync'
 import { Save, LogOut, Cloud, Smartphone, X, RotateCcw } from 'lucide-react'
+import { formatTin, normalizeTin } from '../utils'
 
 export default function Settings({ userEmail }) {
   const { settings, updateSettings, deleteAllData, pending } = useStore()
@@ -115,7 +116,12 @@ export default function Settings({ userEmail }) {
           </div>
           <div className="form-group form-col-full">
             <label className="form-label">TIN <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(your business's, shown on printed invoices)</span></label>
-            <input className="form-input" value={form.tin || ''} onChange={e => setF('tin', e.target.value)} placeholder="000-000-000-000" />
+            <input
+              className="form-input" value={form.tin || ''}
+              onChange={e => setF('tin', formatTin(e.target.value))}
+              onBlur={e => setF('tin', normalizeTin(e.target.value))}
+              placeholder="000-000-000-00000"
+            />
           </div>
           <div className="form-group">
             <label className="form-label">Currency</label>
