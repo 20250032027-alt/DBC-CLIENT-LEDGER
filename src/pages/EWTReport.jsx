@@ -157,18 +157,14 @@ function mmddyyyy(iso) {
   return `${m || ''}${d || ''}${y || ''}`
 }
 
-// Official 2307 groups the TIN as three 3-digit boxes (each with its own
-// dash) followed by ONE wider box for the branch code — not a uniform run
-// of small boxes. digitBoxes() alone doesn't reproduce that grouping.
 // Official 2307 groups the TIN as three 3-digit boxes (each followed by a
-// shaded dash cell), then a final 6-box group with no trailing dash — all
-// boxes the SAME size. The previous version used one wider box for the
-// last group, sized for 4 characters — but at this font/box size that
-// wrapped to a second line inside the box the moment a real TIN with a
-// 4-digit branch code was entered (visible as "0000" dropping below the
-// dash instead of sitting inline). Uniform single-digit boxes throughout
-// fixes that permanently, since no box ever needs to hold more than one
-// character.
+// shaded dash cell), then a final 5-box group with no trailing dash — all
+// boxes the SAME size. An earlier version used one wider box for the last
+// group, sized for multiple characters — but at this font/box size that
+// wrapped to a second line inside the box the moment a real TIN was
+// entered (visible as digits dropping below the dash instead of sitting
+// inline). Uniform single-digit boxes throughout fixes that permanently,
+// since no box ever needs to hold more than one character.
 function tinBoxes(tin) {
   const digits = (tin || '').replace(/\D/g, '')
   const mkBoxes = (str, n) => str.padEnd(n, ' ').slice(0, n)
@@ -177,7 +173,7 @@ function tinBoxes(tin) {
   return mkBoxes(digits.slice(0, 3), 3) + dash +
     mkBoxes(digits.slice(3, 6), 3) + dash +
     mkBoxes(digits.slice(6, 9), 3) + dash +
-    mkBoxes(digits.slice(9, 15), 6)
+    mkBoxes(digits.slice(9, 14), 5)
 }
 
 function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }) {
@@ -212,6 +208,11 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
     table.frame td, table.frame th { border: 1px solid #111; padding: 4px 6px; font-size: 10.5px; vertical-align: top; }
     .section-title { background: #ddd; font-weight: 700; text-align: center; padding: 3px; font-size: 10.5px; border: 1px solid #111; }
     .box { display: inline-block; border: 1px solid #111; width: 13px; height: 15px; text-align: center; margin-right: 1px; font-family: monospace; font-size: 10px; }
+    /* Without this, a run of ~18 small inline-block boxes wraps like words
+       in a sentence the moment the table cell is even slightly narrower
+       than their combined width — dropping the tail end of the TIN onto a
+       second line instead of keeping the whole thing on one row. */
+    .tin-row { white-space: nowrap; }
     .tin-dash-box { background: #999; color: #fff; font-weight: 700; }
     .field-label { font-size: 9px; color: #333; }
     th.money, td.money { text-align: right; font-variant-numeric: tabular-nums; }
@@ -258,7 +259,7 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
   <table class="frame">
     <tr>
       <td style="width:30%;"><b>2</b> Taxpayer Identification Number (TIN)</td>
-      <td>${tinBoxes(payee.tin)}</td>
+      <td class="tin-row">${tinBoxes(payee.tin)}</td>
     </tr>
     <tr>
       <td colspan="2"><b>3</b> Payee's Name <span class="field-label">(Last Name, First Name, Middle Name for Individual OR Registered Name for Non-Individual)</span><br>
@@ -277,7 +278,7 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
   <table class="frame">
     <tr>
       <td style="width:30%;"><b>6</b> Taxpayer Identification Number (TIN)</td>
-      <td>${tinBoxes(settings.tin)}</td>
+      <td class="tin-row">${tinBoxes(settings.tin)}</td>
     </tr>
     <tr>
       <td colspan="2"><b>7</b> Payor's Name <span class="field-label">(Last Name, First Name, Middle Name for Individual OR Registered Name for Non-Individual)</span><br>
