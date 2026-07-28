@@ -1318,6 +1318,65 @@ function DeleteVoucherModal({ voucher, settings, onClose, onConfirm }) {
   )
 }
 
+// ── Post confirmation: same password gate as delete, since posting a
+// voucher (possibly several bulk entries at once) locks it into reports
+// and other totals — it shouldn't be a single unconfirmed click any more
+// than deleting one is. ──
+function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const requiresPassword = !!(settings?.deletePassword)
+  const entryCount = (voucher.entries || []).length
+
+  function handleConfirm() {
+    if (requiresPassword && password !== settings.deletePassword) {
+      setError('Incorrect password.')
+      return
+    }
+    onConfirm()
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 420 }} onKeyDown={e => e.key === 'Escape' && onClose()}>
+        <div className="modal-header">
+          <span className="modal-title">Post Voucher</span>
+          <button className="icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div style={{ fontSize: 13.5, color: 'var(--text-2)', marginBottom: requiresPassword ? 16 : 0, lineHeight: 1.6 }}>
+          You are about to post <strong style={{ color: 'var(--text-1)' }}>{VOUCHER_TITLE[voucher.type] || 'Voucher'} {voucher.number}</strong>
+          {entryCount > 1 ? ` (${entryCount} entries)` : ''}. Once posted it's included in Trial Balance and the
+          Financial Reports.
+        </div>
+
+        {requiresPassword && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Password</label>
+            <input
+              autoFocus
+              type="password"
+              className="form-input"
+              value={password}
+              onChange={e => { setPassword(e.target.value); setError('') }}
+              onKeyDown={e => e.key === 'Enter' && handleConfirm()}
+            />
+          </div>
+        )}
+
+        {error && (
+          <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 10 }}>{error}</div>
+        )}
+
+        <div className="modal-footer" style={{ marginTop: 20 }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleConfirm}>Post Voucher</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, settings }) {
   const blankEntry = () => ({ account: '', description: '', debit: '', credit: '', id: crypto.randomUUID() })
   const [form, setForm] = useState(voucher ? { ...voucher, memo: voucher.memo || '' } : {
@@ -1705,6 +1764,7 @@ export default function Vouchers() {
   const { vouchers, addVoucher, updateVoucher, deleteVoucher, clients, accounts, templates, addTemplate, deleteTemplate, settings } = useStore()
   const [modal, setModal] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [postTarget, setPostTarget] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -1872,7 +1932,7 @@ export default function Vouchers() {
                       <td>
                         <div className="row-actions">
                           {v.posted === false && (
-                            <button className="icon-btn" title="Post this voucher — includes it in reports" onClick={() => updateVoucher(v.id, { posted: true })} style={{ color: 'var(--green)' }}>
+                            <button className="icon-btn" title="Post this voucher — includes it in reports" onClick={() => setPostTarget(v)} style={{ color: 'var(--green)' }}>
                               <CheckCircle size={14} />
                             </button>
                           )}
@@ -1936,6 +1996,15 @@ export default function Vouchers() {
           settings={settings}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => { deleteVoucher(deleteTarget.id); setDeleteTarget(null) }}
+        />
+      )}
+
+      {postTarget && (
+        <PostVoucherModal
+          voucher={postTarget}
+          settings={settings}
+          onClose={() => setPostTarget(null)}
+          onConfirm={() => { updateVoucher(postTarget.id, { posted: true }); setPostTarget(null) }}
         />
       )}
 
