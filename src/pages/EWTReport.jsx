@@ -160,13 +160,24 @@ function mmddyyyy(iso) {
 // Official 2307 groups the TIN as three 3-digit boxes (each with its own
 // dash) followed by ONE wider box for the branch code — not a uniform run
 // of small boxes. digitBoxes() alone doesn't reproduce that grouping.
+// Official 2307 groups the TIN as three 3-digit boxes (each followed by a
+// shaded dash cell), then a final 6-box group with no trailing dash — all
+// boxes the SAME size. The previous version used one wider box for the
+// last group, sized for 4 characters — but at this font/box size that
+// wrapped to a second line inside the box the moment a real TIN with a
+// 4-digit branch code was entered (visible as "0000" dropping below the
+// dash instead of sitting inline). Uniform single-digit boxes throughout
+// fixes that permanently, since no box ever needs to hold more than one
+// character.
 function tinBoxes(tin) {
   const digits = (tin || '').replace(/\D/g, '')
-  const group = (start, len) => digits.slice(start, start + len).padEnd(len, ' ')
+  const mkBoxes = (str, n) => str.padEnd(n, ' ').slice(0, n)
     .split('').map(d => `<span class="box">${d.trim()}</span>`).join('')
-  const branch = digits.slice(9, 13)
-  return `${group(0, 3)}<span class="tin-dash">-</span>${group(3, 3)}<span class="tin-dash">-</span>${group(6, 3)}` +
-    `<span class="tin-dash">-</span><span class="box box-wide">${branch}</span>`
+  const dash = `<span class="box tin-dash-box">-</span>`
+  return mkBoxes(digits.slice(0, 3), 3) + dash +
+    mkBoxes(digits.slice(3, 6), 3) + dash +
+    mkBoxes(digits.slice(6, 9), 3) + dash +
+    mkBoxes(digits.slice(9, 15), 6)
 }
 
 function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }) {
@@ -195,14 +206,13 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
     .title-formno b { font-size: 20px; }
     .title-cert { width: 55%; text-align: center; font-size: 16px; font-weight: 700; }
     .title-barcode { width: 25%; text-align: center; font-size: 8px; }
-    .barcode { height: 24px; background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 5px); margin: 0 auto 3px; width: 85%; }
+    .barcode { display: block; margin: 0 auto 3px; width: 85%; height: auto; }
     .instr { font-size: 9px; padding-bottom: 6px; border-bottom: 1.5px solid #111; margin-bottom: 6px; }
     table.frame { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
     table.frame td, table.frame th { border: 1px solid #111; padding: 4px 6px; font-size: 10.5px; vertical-align: top; }
     .section-title { background: #ddd; font-weight: 700; text-align: center; padding: 3px; font-size: 10.5px; border: 1px solid #111; }
     .box { display: inline-block; border: 1px solid #111; width: 13px; height: 15px; text-align: center; margin-right: 1px; font-family: monospace; font-size: 10px; }
-    .box-wide { width: 38px; }
-    .tin-dash { display: inline-block; margin: 0 3px; font-weight: 700; }
+    .tin-dash-box { background: #999; color: #fff; font-weight: 700; }
     .field-label { font-size: 9px; color: #333; }
     th.money, td.money { text-align: right; font-variant-numeric: tabular-nums; }
     .total-row td { font-weight: 700; }
@@ -230,7 +240,7 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
     <tr>
       <td class="title-formno">BIR Form No.<br><b>2307</b><br>January 2018 (ENCS)</td>
       <td class="title-cert">Certificate of Creditable Tax<br>Withheld at Source</td>
-      <td class="title-barcode"><div class="barcode"></div>2307 01/18ENCS</td>
+      <td class="title-barcode"><img class="barcode" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAVMAAABCCAAAAADP3WoiAAAEsklEQVR4nO1c25brIAiFrvn/X+Y85CLi9o6JPas8dJqoiFtUEDosREwk9CMHOpD8EJH8IHWlz9sC/If0R0RMLETEqFyIz894k2BVQxWybkm6blRNESd1UcOII5t+xVRHfOPRydkPK+6hDwBEJDgHBnDj/ND3bKZ2rFAJHqEyYr+1n85Mk44VKn0jplusq8IiacT0vWW2JZXheFtPRyZr9wl+GtMVeOyG8dt6+hItnYZGTBuPhaKo1mJs7JWZjVEsmgm0d+ucL7uUWRKRZgH31dMCYszVKldN2wQyl1ClH4NsCxeT4s+DSaDTNymPkhNv5fDV9FPgyNcHiQI51k0535l+c27U2YJFYAP7tpf899N0LZlyIkp0kHK6I+BbvQ/NFvPNe+Pz9PoZtdCAD+55tkxWiPA2pk33jBaVARDSJurgk2ylIXoL0xnx07a+i3ivc38t7Wbb52gQUzYP/bZnM6WnVPEmyQjB5m9akr6aHYeTnl7Xs930LbrXQ8vWfmWy27Fk8K3AjZM3GUmA8eq00OZtfjTSotUsDIHKD+i0aFdZXQ0S9JGPHxVZgkIV8SRjh0NqUdMIcJa4CRSlKuMMTaz9nEw4RIYeJVdF5PCUGv0lQas/5Ru4ZXF2oXFMu7IChgfRotH9d11racUZBXfYSpu8n+ONwnpQJzE91mhmadfa6oeM/QhPZMi/cYv2WhsletGPqovuq1JN92Ue3W7um8p6796fntpPN2B5bibrZ2QS0xkB3Va2D0p+WLvpaU2kt5JH8uGUZbRmP2XsKV3uVu0WqxIQajV2WX2ab0zEVsg7XLjHuY/uzXKSMcguBAxxQFSwZ5WJkpygIlHwO5/d1sXfv0S5bvzOsaDgsa6pCzikkYq+kI0uEeUuVt4tX4HYJJFUPwsfEnFUAhqybBg3/dEPU3/aGtPdjfsMbY3pU+RsYHliukX+8ga0tZ5+6STN3vX5SPF/0aB9Kqx+JWSDFWlmX3CczgQ9CiGhwweIopgS5QtgS/7+rnN02JTwJdDtU8nRHxAvWL6zR6NzriQRHRLX7eZqHLQBUtQEJFc1R7V8lp3nfloJ6t661+CZTlATLuW47kz3tMMZ5R7DhC7xkxu/B6aD8ron4+1yYL5on74EwfZx0276Bndzj/vTrej1afPAlJMv1JNNN9BRsZ9i+L8Ufygy6KB2TJE0ZVj6W7jQd+tpHL1ZnoMjyKSv9Z64DCAI5TwLDn6UWvrl5Fiz/qJYiSa5P1j7YzjBnK0FamN6DKSBWYCo4hC16+lAhwqPODgHN7AoFhcjpLJLU6mg7x69snOGvFCxEoyTz7lvPU4w8soLWJZT+2pqU0PeajKtflvXPrZUUUVsBDW8zjeoFK2z/V0wHRDPz6Hfj9r/H0reoYYmYiWjgyuKmVZHD+0s6vNQ54q2HFS3S08znS03CB06WCUjmiuP3/Hli+vpzc3FD1KrqZujpbbULMOW1OVhsWY012YRxfQplNF13l6GRjA4oHUjplmJYDKZ4QIki2r0wJlOT+EuvHJuiB4fGMf5/xb0pivhby1mxHI1YLkf70DSvGYDFqm3Yytxqf/k5RELTKrew+gazxkjtJj+aIIOTP8BjnZ9hALEGwAAAAAASUVORK5CYII=" alt="barcode"/>2307 01/18ENCS</td>
     </tr>
   </table>
 
