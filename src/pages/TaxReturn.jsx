@@ -36,7 +36,7 @@ function printTaxReturn({ settings, scheme, rate, from, to, grossSales, taxDue, 
   <meta charset="utf-8"/>
   <title>${title}</title>
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #111827; padding: 48px 56px; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #111827; padding: 48px 56px; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
     .firm-name { font-size: 18px; font-weight: 800; }
     .firm-meta { font-size: 11.5px; color: #4b5563; text-align: right; line-height: 1.7; }

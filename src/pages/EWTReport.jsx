@@ -87,7 +87,7 @@ function printEWTReport({ settings, from, to, rows, totals, cur }) {
   <meta charset="utf-8"/>
   <title>Expanded Withholding Tax Report</title>
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #111827; padding: 40px 48px; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #111827; padding: 40px 48px; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
     .firm-name { font-size: 18px; font-weight: 800; }
     .firm-meta { font-size: 11px; color: #4b5563; text-align: right; line-height: 1.7; }
@@ -165,7 +165,13 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
   <meta charset="utf-8"/>
   <title>BIR Form 2307 - ${payee.name || 'Payee'}</title>
   <style>
-    body { font-family: Arial, sans-serif; font-size: 10.5px; color: #111; padding: 24px 30px; }
+    /* Without this, Chrome/most browsers strip background colors (the gray
+       Part I/II/III bars and CONFORME bar) from the actual printed output
+       or "Save as PDF" by default, unless the person printing manually
+       ticks "Background graphics" in the print dialog — which almost no
+       one does. This forces those backgrounds to survive printing so the
+       output matches the real BIR form regardless of that setting. */
+    body { font-family: Arial, sans-serif; font-size: 10.5px; color: #111; padding: 24px 30px; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
     .form-title { text-align: center; }
     .form-title .agency { font-size: 11px; font-weight: 700; line-height: 1.4; }
     .form-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #111; padding-bottom: 6px; margin-bottom: 6px; }
