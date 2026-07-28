@@ -157,6 +157,18 @@ function mmddyyyy(iso) {
   return `${m || ''}${d || ''}${y || ''}`
 }
 
+// Official 2307 groups the TIN as three 3-digit boxes (each with its own
+// dash) followed by ONE wider box for the branch code — not a uniform run
+// of small boxes. digitBoxes() alone doesn't reproduce that grouping.
+function tinBoxes(tin) {
+  const digits = (tin || '').replace(/\D/g, '')
+  const group = (start, len) => digits.slice(start, start + len).padEnd(len, ' ')
+    .split('').map(d => `<span class="box">${d.trim()}</span>`).join('')
+  const branch = digits.slice(9, 13)
+  return `${group(0, 3)}<span class="tin-dash">-</span>${group(3, 3)}<span class="tin-dash">-</span>${group(6, 3)}` +
+    `<span class="tin-dash">-</span><span class="box box-wide">${branch}</span>`
+}
+
 function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }) {
   const w = window.open('', '_blank', 'width=900,height=750')
   w.document.write(`<!DOCTYPE html>
@@ -172,16 +184,25 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
        one does. This forces those backgrounds to survive printing so the
        output matches the real BIR form regardless of that setting. */
     body { font-family: Arial, sans-serif; font-size: 10.5px; color: #111; padding: 24px 30px; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
-    .form-title { text-align: center; }
-    .form-title .agency { font-size: 11px; font-weight: 700; line-height: 1.4; }
-    .form-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #111; padding-bottom: 6px; margin-bottom: 6px; }
-    .form-no { font-size: 10px; line-height: 1.4; }
-    .form-no b { font-size: 13px; }
-    .cert-title { font-size: 16px; font-weight: 700; text-align: center; }
+    .form-top { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 4px; }
+    .form-top-left { font-size: 9px; line-height: 1.3; }
+    .form-top-center { text-align: center; }
+    .form-top-center .agency { font-size: 11px; font-weight: 700; line-height: 1.4; }
+    table.title-box { width: 100%; border-collapse: collapse; border: 1.5px solid #111; margin: 4px 0; }
+    table.title-box td { border-right: 1px solid #111; padding: 6px 8px; vertical-align: middle; }
+    table.title-box td:last-child { border-right: none; }
+    .title-formno { width: 20%; font-size: 9.5px; line-height: 1.5; }
+    .title-formno b { font-size: 20px; }
+    .title-cert { width: 55%; text-align: center; font-size: 16px; font-weight: 700; }
+    .title-barcode { width: 25%; text-align: center; font-size: 8px; }
+    .barcode { height: 24px; background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 5px); margin: 0 auto 3px; width: 85%; }
+    .instr { font-size: 9px; padding-bottom: 6px; border-bottom: 1.5px solid #111; margin-bottom: 6px; }
     table.frame { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
     table.frame td, table.frame th { border: 1px solid #111; padding: 4px 6px; font-size: 10.5px; vertical-align: top; }
     .section-title { background: #ddd; font-weight: 700; text-align: center; padding: 3px; font-size: 10.5px; border: 1px solid #111; }
     .box { display: inline-block; border: 1px solid #111; width: 13px; height: 15px; text-align: center; margin-right: 1px; font-family: monospace; font-size: 10px; }
+    .box-wide { width: 38px; }
+    .tin-dash { display: inline-block; margin: 0 3px; font-weight: 700; }
     .field-label { font-size: 9px; color: #333; }
     th.money, td.money { text-align: right; font-variant-numeric: tabular-nums; }
     .total-row td { font-weight: 700; }
@@ -196,18 +217,26 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
 </head>
 <body>
 
-  <div class="form-head">
-    <div class="form-no">
+  <div class="form-top">
+    <div class="form-top-left">
       For BIR<br>Use Only <span style="margin-left:8px;">BCS/<br>Item:</span>
     </div>
-    <div class="form-title">
+    <div class="form-top-center">
       <div class="agency">Republic of the Philippines<br>Department of Finance<br>Bureau of Internal Revenue</div>
     </div>
-    <div class="form-no" style="text-align:right;"><b>2307</b><br>January 2018 (ENCS)</div>
   </div>
-  <div class="cert-title">Certificate of Creditable Tax<br>Withheld at Source</div>
 
-  <table class="frame" style="margin-top:8px;">
+  <table class="title-box">
+    <tr>
+      <td class="title-formno">BIR Form No.<br><b>2307</b><br>January 2018 (ENCS)</td>
+      <td class="title-cert">Certificate of Creditable Tax<br>Withheld at Source</td>
+      <td class="title-barcode"><div class="barcode"></div>2307 01/18ENCS</td>
+    </tr>
+  </table>
+
+  <div class="instr">Fill in all applicable spaces. Mark all appropriate boxes with an "X".</div>
+
+  <table class="frame">
     <tr>
       <td style="width:20%;"><b>1</b> For the Period</td>
       <td>From ${digitBoxes(mmddyyyy(from), 8)} <span class="field-label">(MM/DD/YYYY)</span>
@@ -219,7 +248,7 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
   <table class="frame">
     <tr>
       <td style="width:30%;"><b>2</b> Taxpayer Identification Number (TIN)</td>
-      <td>${digitBoxes(payee.tin, 9)} &ndash; ${digitBoxes((payee.tin || '').replace(/\D/g, '').slice(9), 5)}</td>
+      <td>${tinBoxes(payee.tin)}</td>
     </tr>
     <tr>
       <td colspan="2"><b>3</b> Payee's Name <span class="field-label">(Last Name, First Name, Middle Name for Individual OR Registered Name for Non-Individual)</span><br>
@@ -229,13 +258,16 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
       <td style="width:70%;"><b>4</b> Registered Address<br><div style="padding-top:4px;">${payee.address || ''}</div></td>
       <td><b>4A</b> ZIP Code</td>
     </tr>
+    <tr>
+      <td colspan="2"><b>5</b> Foreign Address, if applicable<br><div style="padding-top:4px;">${payee.foreignAddress || ''}</div></td>
+    </tr>
   </table>
 
   <div class="section-title">Part II &ndash; Payor Information</div>
   <table class="frame">
     <tr>
       <td style="width:30%;"><b>6</b> Taxpayer Identification Number (TIN)</td>
-      <td>${digitBoxes(settings.tin, 9)} &ndash; ${digitBoxes((settings.tin || '').replace(/\D/g, '').slice(9), 5)}</td>
+      <td>${tinBoxes(settings.tin)}</td>
     </tr>
     <tr>
       <td colspan="2"><b>7</b> Payor's Name <span class="field-label">(Last Name, First Name, Middle Name for Individual OR Registered Name for Non-Individual)</span><br>
