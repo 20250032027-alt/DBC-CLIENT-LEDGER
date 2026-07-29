@@ -59,9 +59,154 @@ function buildRows(vouchers, accountTypeByName) {
   return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''))
 }
 
-// Groups a payee's rows (already scoped to one quarter) by nature of
-// payment, bucketing each into the 1st/2nd/3rd month of the quarter —
-// exactly the shape BIR Form 2307 Part III wants.
+// ── SAWT (Summary Alphalist of Withholding Taxes) — the mirror image of
+// the EWT report above. EWT tracks tax THIS company withheld from ITS
+// payees (a liability, Withholding Tax Payable). SAWT tracks tax
+// CLIENTS/payors withheld from payments made TO this company (an asset,
+// Withholding Tax Receivable) — it's the creditable tax this company can
+// claim against its own income tax due, backed by the 2307s its clients
+// issued. Matched by name with .includes() rather than an exact match so
+// "Withholding Tax Receivable - At Source" (or any other suffix) still
+// matches, the same way the account might be named slightly differently
+// across different books.
+const WT_RECEIVABLE_ACCOUNT_NAME = 'withholding tax receivable'
+
+function buildReceivableRows(vouchers, accountTypeByName, clients) {
+  const rows = []
+  vouchers.forEach(v => {
+    const entries = v.entries || []
+    let taxWithheld = 0
+    entries.forEach(e => {
+      if ((e.account || '').trim().toLowerCase().includes(WT_RECEIVABLE_ACCOUNT_NAME)) {
+        taxWithheld += parseFloat(e.debit || 0) - parseFloat(e.credit || 0)
+      }
+    })
+    if (taxWithheld <= 0) return
+
+    // The income payment this was withheld against is whatever got
+    // credited to a revenue account in the same voucher (e.g. Dr Cash /
+    // Dr Withholding Tax Receivable / Cr Service Revenue).
+    let gross = 0
+    entries.forEach(e => {
+      const type = accountTypeByName[(e.account || '').trim().toLowerCase()]
+      if (type === 'revenue') gross += parseFloat(e.credit || 0) - parseFloat(e.debit || 0)
+    })
+    if (gross <= 0) gross = taxWithheld
+
+    const client = clients.find(c => c.id === v.clientId)
+    const payorName = (client?.company || client?.name || v.payee || '').trim() || '(unnamed payor)'
+    const payorTinRaw = client?.tin || v.payeeTin || ''
+
+    rows.push({
+      id: v.id,
+      date: v.date,
+      number: v.number,
+      payorName,
+      payorTin: payorTinRaw ? normalizeTin(payorTinRaw) : '—',
+      nature: v.memo || 'Income payment',
+      gross,
+      rate: gross > 0 ? (taxWithheld / gross) * 100 : 0,
+      taxWithheld,
+    })
+  })
+  return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+}
+
+// One SAWT line per payor+nature combination, matching the reference
+// alphalist layout (one row per payor, per kind of income payment).
+function groupSAWT(rows) {
+  const groups = new Map()
+  rows.forEach(r => {
+    const key = `${r.payorTin}|${r.nature}`
+    if (!groups.has(key)) {
+      groups.set(key, { payorTin: r.payorTin, payorName: r.payorName, nature: r.nature, gross: 0, taxWithheld: 0 })
+    }
+    const g = groups.get(key)
+    g.gross += r.gross
+    g.taxWithheld += r.taxWithheld
+  })
+  return Array.from(groups.values())
+    .map(g => ({ ...g, rate: g.gross > 0 ? (g.taxWithheld / g.gross) * 100 : 0 }))
+    .sort((a, b) => a.payorName.localeCompare(b.payorName))
+}
+
+function printSAWTReport({ settings, periodLabel, lines, totals, cur }) {
+  const w = window.open('', '_blank', 'width=1000,height=750')
+  w.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>SAWT - ${periodLabel}</title>
+  <style>
+    body { font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #111; padding: 30px 36px; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+    .hdr-line { font-weight: 700; }
+    .hdr { margin-bottom: 14px; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 4px 8px; font-size: 11.5px; vertical-align: bottom; }
+    th { text-align: left; font-weight: 700; border-bottom: 1px solid #111; }
+    th.num { text-align: right; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .colnum { font-weight: 400; font-size: 10px; }
+    tr.total td { border-top: 1px solid #111; font-weight: 700; }
+    .doubledash { border-top: 3px double #111; }
+    .footer { margin-top: 24px; font-weight: 700; }
+    @media print { .no-print { display: none; } }
+    .no-print { text-align: center; margin: 20px 0; }
+    .no-print button { font-size: 13px; font-weight: 600; padding: 8px 20px; border-radius: 6px; border: none; background: #4f72f5; color: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div class="hdr-line">BIR FORM 1701</div>
+    <div class="hdr-line">SUMMARY ALPHALIST OF WITHHOLDING TAXES (SAWT)</div>
+    <div class="hdr-line">FOR THE ${periodLabel}</div>
+    <br/>
+    TIN: ${settings.tin ? normalizeTin(settings.tin) : ''}<br/>
+    PAYEE'S NAME: ${(settings.company || '').toUpperCase()}
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:16%;">TAXPAYER<br/>IDENTIFICATION<br/>NUMBER<br/><span class="colnum">(2)</span></th>
+        <th style="width:20%;">CORPORATION<br/>(Registered Name)<br/><span class="colnum">(3)</span></th>
+        <th style="width:10%;">ATC CODE<br/><span class="colnum">(5)</span></th>
+        <th style="width:20%;">NATURE OF PAYMENT</th>
+        <th class="num" style="width:14%;">AMOUNT OF<br/>INCOME PAYMENT<br/><span class="colnum">(6)</span></th>
+        <th class="num" style="width:8%;">TAX RATE<br/><span class="colnum">(7)</span></th>
+        <th class="num" style="width:14%;">AMOUNT OF<br/>TAX WITHHELD<br/><span class="colnum">(8)</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      ${lines.length === 0 ? `<tr><td colspan="7" style="text-align:center;color:#666;padding:20px 8px;">No withholding tax receivable posted this period.</td></tr>` : ''}
+      ${lines.map(l => `
+      <tr>
+        <td>${l.payorTin}</td>
+        <td>${l.payorName}</td>
+        <td>${l.atc || ''}</td>
+        <td>${l.nature}</td>
+        <td class="num">${fmt(l.gross, cur)}</td>
+        <td class="num">${l.rate.toFixed(2)}</td>
+        <td class="num">${fmt(l.taxWithheld, cur)}</td>
+      </tr>`).join('')}
+      ${lines.length > 0 ? `
+      <tr class="total">
+        <td colspan="4">Grand Total:</td>
+        <td class="num">${fmt(totals.gross, cur)}</td>
+        <td></td>
+        <td class="num doubledash">${fmt(totals.taxWithheld, cur)}</td>
+      </tr>` : ''}
+    </tbody>
+  </table>
+
+  <div class="footer">*** END OF REPORT ***</div>
+
+  <div class="no-print" style="margin-top:24px;"><button onclick="window.print()">Print</button></div>
+  <script>window.onload = () => { window.print(); }</script>
+</body>
+</html>`)
+  w.document.close()
+}
 function groupForm2307(rows, startMonth) {
   const groups = new Map()
   rows.forEach(r => {
@@ -362,9 +507,11 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
 }
 
 export default function EWTReport() {
-  const { vouchers: allVouchers, accounts, settings } = useStore()
+  const { vouchers: allVouchers, accounts, settings, clients } = useStore()
   const vouchers = postedOnly(allVouchers)
   const cur = settings.currency
+
+  const [reportTab, setReportTab] = useState('ewt')
 
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
@@ -396,6 +543,38 @@ export default function EWTReport() {
   const monthShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
   const hasAccount = accounts.some(a => (a.name || '').trim().toLowerCase() === WT_ACCOUNT_NAME.toLowerCase())
+
+  // --- SAWT: same monthly period pattern as the EWT summary above, but
+  // its own state since someone may want to view a different month for
+  // each report. ---
+  const [sawtMonth, setSawtMonth] = useState(now.getMonth())
+  const [sawtYear, setSawtYear] = useState(now.getFullYear())
+  const { from: sawtFrom, to: sawtTo } = monthRange(sawtYear, sawtMonth)
+  const [sawtAtcCodes, setSawtAtcCodes] = useState({})
+
+  const sawtPeriodVouchers = useMemo(() => vouchers.filter(v => {
+    if (v.date && v.date < sawtFrom) return false
+    if (v.date && v.date > sawtTo) return false
+    return true
+  }), [vouchers, sawtFrom, sawtTo])
+
+  const sawtRows = useMemo(
+    () => buildReceivableRows(sawtPeriodVouchers, accountTypeByName, clients),
+    [sawtPeriodVouchers, accountTypeByName, clients]
+  )
+
+  const sawtLines = useMemo(
+    () => groupSAWT(sawtRows).map(l => ({ ...l, atc: sawtAtcCodes[`${l.payorTin}|${l.nature}`] || '' })),
+    [sawtRows, sawtAtcCodes]
+  )
+
+  const sawtTotals = useMemo(() => sawtLines.reduce((acc, l) => ({
+    gross: acc.gross + l.gross,
+    taxWithheld: acc.taxWithheld + l.taxWithheld,
+  }), { gross: 0, taxWithheld: 0 }), [sawtLines])
+
+  const hasReceivableAccount = accounts.some(a => (a.name || '').trim().toLowerCase().includes(WT_RECEIVABLE_ACCOUNT_NAME))
+  const sawtPeriodLabel = `MONTH OF ${months[sawtMonth].toUpperCase()}, ${sawtYear}`
 
   // --- BIR Form 2307 generator: pick a payee TIN + quarter, and it pulls
   // every withheld amount for that payee in the quarter straight off the
@@ -449,6 +628,33 @@ export default function EWTReport() {
         </button>
       </div>
 
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+        <button
+          className="btn btn-ghost"
+          style={{
+            fontSize: 12.5, padding: '8px 16px',
+            background: reportTab === 'ewt' ? 'var(--accent)' : undefined,
+            color: reportTab === 'ewt' ? '#fff' : undefined,
+          }}
+          onClick={() => setReportTab('ewt')}
+        >
+          EWT (Payable)
+        </button>
+        <button
+          className="btn btn-ghost"
+          style={{
+            fontSize: 12.5, padding: '8px 16px',
+            background: reportTab === 'sawt' ? 'var(--accent)' : undefined,
+            color: reportTab === 'sawt' ? '#fff' : undefined,
+          }}
+          onClick={() => setReportTab('sawt')}
+        >
+          SAWT (Receivable)
+        </button>
+      </div>
+
+      {reportTab === 'ewt' && (
+      <>
       <div className="financial-date-toolbar" style={{
         display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
         marginBottom: 16, padding: '12px 16px',
@@ -664,6 +870,113 @@ export default function EWTReport() {
           for manual completion. This is a filing-prep aid, not a substitute for BIR's official form.
         </div>
       </div>
+      </>
+      )}
+
+      {reportTab === 'sawt' && (
+      <>
+      <div className="financial-date-toolbar" style={{
+        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
+        marginBottom: 16, padding: '12px 16px',
+        background: 'var(--surface2)', borderRadius: 'var(--radius-sm)',
+        border: '1px solid var(--border)',
+      }}>
+        <select className="form-select" style={{ width: 'auto', fontSize: 12 }} value={sawtMonth} onChange={e => setSawtMonth(parseInt(e.target.value, 10))}>
+          {months.map((m, i) => <option key={m} value={i}>{m}</option>)}
+        </select>
+        <select className="form-select" style={{ width: 'auto', fontSize: 12 }} value={sawtYear} onChange={e => setSawtYear(parseInt(e.target.value, 10))}>
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{sawtFrom} to {sawtTo}</span>
+      </div>
+
+      {!hasReceivableAccount && (
+        <div style={{
+          fontSize: 12.5, color: 'var(--amber)', background: 'var(--surface2)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          padding: '10px 14px', marginBottom: 16, lineHeight: 1.6,
+        }}>
+          No account with "withholding tax receivable" in its name found yet — add one in Chart of
+          Accounts (asset — e.g. "Withholding Tax Receivable - At Source") and debit it for the
+          withheld portion when you record a client payment, and it'll show up here automatically.
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-title" style={{ marginBottom: 4 }}>Summary Alphalist of Withholding Taxes (SAWT)</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 16 }}>
+          Tax your clients withheld from payments to {settings.company || 'you'} — the credit you can
+          claim against income tax due, backed by the 2307s they issued you.
+        </div>
+
+        {sawtLines.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: 'var(--text-3)', padding: '12px 0' }}>
+            No withholding tax receivable posted this period.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto', marginBottom: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border2)' }}>
+                  {['TIN', 'Corporation (Registered Name)', 'ATC', 'Nature of Payment', 'Income Payment', 'Rate', 'Tax Withheld'].map((h, i) => (
+                    <th key={h} style={{
+                      textAlign: i >= 4 ? 'right' : 'left', padding: '8px', fontSize: 11,
+                      textTransform: 'uppercase', letterSpacing: '0.02em', color: 'var(--text-3)',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sawtLines.map(l => (
+                  <tr key={`${l.payorTin}|${l.nature}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px' }}>{l.payorTin}</td>
+                    <td style={{ padding: '8px' }}>{l.payorName}</td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <input
+                        className="form-input" style={{ fontSize: 12, padding: '4px 6px', width: 80 }}
+                        value={sawtAtcCodes[`${l.payorTin}|${l.nature}`] || ''}
+                        onChange={e => setSawtAtcCodes(a => ({ ...a, [`${l.payorTin}|${l.nature}`]: e.target.value.toUpperCase() }))}
+                        placeholder="WI010"
+                      />
+                    </td>
+                    <td style={{ padding: '8px' }}>{l.nature}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(l.gross, cur)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.rate.toFixed(2)}%</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(l.taxWithheld, cur)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--border2)', fontWeight: 700 }}>
+                  <td style={{ padding: '8px' }} colSpan={4}>Grand Total</td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(sawtTotals.gross, cur)}</td>
+                  <td></td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--amber)' }}>{fmt(sawtTotals.taxWithheld, cur)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        <button
+          className="btn btn-primary"
+          onClick={() => printSAWTReport({ settings, periodLabel: sawtPeriodLabel, lines: sawtLines, totals: sawtTotals, cur })}
+        >
+          <FileText size={15} /> Generate SAWT Report
+        </button>
+
+        <div style={{
+          fontSize: 11, color: 'var(--text-3)', background: 'var(--surface2)',
+          borderRadius: 'var(--radius-sm)', padding: '10px 12px', marginTop: 16, lineHeight: 1.7,
+        }}>
+          Payor TIN/name come from the linked Client record on each voucher (or the payee fields if
+          no client is linked) — link the client when recording a receipt so it shows up correctly
+          here. ATC codes aren't tracked in the ledger — fill them in above before generating. This is
+          a filing-prep aid, not a substitute for BIR's official alphalist submission.
+        </div>
+      </div>
+      </>
+      )}
     </div>
   )
 }
