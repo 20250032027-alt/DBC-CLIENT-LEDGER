@@ -235,6 +235,44 @@ function AppShell({ userEmail, bypassApprovalGate }) {
   const { loading, error, clearError, conflicts, clearConflicts, settings } = useStore()
   const Page = PAGES[page]
 
+  // ── Team Members (Settings → Team Members): a lightweight, UI-level
+  // layer on top of the one shared login, so several people can use the
+  // same account and each get their own restricted, read-only-on-some-tabs
+  // view. This is NOT a real per-user security boundary — see the comment
+  // in migrations/006_team_members.sql for why. bypassApprovalGate also
+  // means "this is the admin using Manage Ledger", which always gets full
+  // access regardless of the client's own team setup.
+  const teamMembers = settings.teamMembers || []
+  const TEAM_STORAGE_KEY = 'dbc_active_team_member'
+  const [activeMemberId, setActiveMemberId] = useState(() => {
+    try { return localStorage.getItem(TEAM_STORAGE_KEY) } catch { return null }
+  })
+  const [pendingMemberId, setPendingMemberId] = useState(null)
+  const [teamPassword, setTeamPassword] = useState('')
+  const [teamError, setTeamError] = useState('')
+
+  const activeMember = teamMembers.find(m => m.id === activeMemberId) || null
+
+  function switchUser() {
+    try { localStorage.removeItem(TEAM_STORAGE_KEY) } catch { /* ignore */ }
+    setActiveMemberId(null)
+    setPendingMemberId(null)
+    setTeamPassword('')
+    setTeamError('')
+  }
+
+  function confirmMember(member) {
+    if (teamPassword !== member.password) { setTeamError('Incorrect password.'); return }
+    try { localStorage.setItem(TEAM_STORAGE_KEY, member.id) } catch { /* ignore */ }
+    setActiveMemberId(member.id)
+    setPendingMemberId(null)
+    setTeamPassword('')
+    setTeamError('')
+  }
+
+  const canEditPage = bypassApprovalGate || !activeMember || activeMember.isAdmin ||
+    !!(activeMember.permissions && activeMember.permissions[page])
+
   function navigate(id) { setPage(id); setSidebarOpen(false) }
 
   if (loading) {
@@ -257,6 +295,50 @@ function AppShell({ userEmail, bypassApprovalGate }) {
         </div>
         <button className="btn btn-ghost btn-sm" onClick={() => supabase.auth.signOut()}>
           <LogOut size={14} /> Sign Out
+        </button>
+      </div>
+    )
+  }
+
+  // Identification gate — appears once team members exist, on any device
+  // that hasn't identified itself yet (or after "Switch User"). Skipped
+  // entirely for admin impersonation.
+  if (!bypassApprovalGate && teamMembers.length > 0 && !activeMember) {
+    const pendingMember = teamMembers.find(m => m.id === pendingMemberId)
+    if (pendingMember) {
+      return (
+        <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>Hi, {pendingMember.name}</div>
+          <input
+            autoFocus type="password" className="form-input" style={{ maxWidth: 240 }}
+            value={teamPassword}
+            onChange={e => { setTeamPassword(e.target.value); setTeamError('') }}
+            onKeyDown={e => e.key === 'Enter' && confirmMember(pendingMember)}
+            placeholder="Password"
+          />
+          {teamError && <div style={{ fontSize: 12, color: 'var(--red)' }}>{teamError}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={() => { setPendingMemberId(null); setTeamPassword(''); setTeamError('') }}>Back</button>
+            <button className="btn btn-primary" onClick={() => confirmMember(pendingMember)}>Continue</button>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-1)' }}>Who's using this?</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 240 }}>
+          {teamMembers.map(m => (
+            <button key={m.id} className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => setPendingMemberId(m.id)}>
+              {m.name}{m.isAdmin ? ' (Admin)' : ''}
+            </button>
+          ))}
+        </div>
+        <button
+          className="btn btn-ghost btn-sm" style={{ fontSize: 11, color: 'var(--text-3)' }}
+          onClick={() => supabase.auth.signOut()}
+        >
+          <LogOut size={12} /> Not you? Sign out
         </button>
       </div>
     )
@@ -306,6 +388,19 @@ function AppShell({ userEmail, bypassApprovalGate }) {
           <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {userEmail}
           </div>
+          {teamMembers.length > 0 && (
+            <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Viewing as {activeMember ? activeMember.name : 'Owner'}
+              </span>
+              <button
+                onClick={switchUser}
+                style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline', flexShrink: 0 }}
+              >
+                Switch
+              </button>
+            </div>
+          )}
           <button
             onClick={() => supabase.auth.signOut()}
             style={{
@@ -364,7 +459,20 @@ function AppShell({ userEmail, bypassApprovalGate }) {
           </div>
         )}
 
-        <main><Page userEmail={userEmail} /></main>
+        <main>
+          {!canEditPage && (
+            <div style={{
+              position: 'sticky', top: 0, zIndex: 5, textAlign: 'center',
+              background: 'var(--amber)', color: '#111', fontSize: 12, fontWeight: 600,
+              padding: '6px 12px',
+            }}>
+              View only for {activeMember?.name} on this tab — ask an admin for edit access.
+            </div>
+          )}
+          <div style={!canEditPage ? { pointerEvents: 'none', opacity: 0.6, userSelect: 'none' } : undefined}>
+            <Page userEmail={userEmail} />
+          </div>
+        </main>
       </div>
     </div>
   )

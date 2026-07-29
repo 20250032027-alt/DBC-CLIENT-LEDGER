@@ -4,8 +4,26 @@ import { supabase } from '../lib/supabase'
 import { getInstallState, promptInstall } from '../lib/installPrompt'
 import { clearLocalDb } from '../lib/db'
 import { stopSync } from '../lib/sync'
-import { Save, LogOut, Cloud, Smartphone, X, RotateCcw } from 'lucide-react'
+import { Save, LogOut, Cloud, Smartphone, X, RotateCcw, Plus, Trash2, Shield } from 'lucide-react'
 import { formatTin, normalizeTin } from '../utils'
+
+// Mirrors App.jsx's NAV ids/labels for the per-tab permission checkboxes
+// below. Keep in sync if pages are ever added, renamed, or removed there.
+const TEAM_PAGES = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'clients', label: 'Clients' },
+  { id: 'vouchers', label: 'Vouchers' },
+  { id: 'accounts', label: 'Chart of Accounts' },
+  { id: 'trial-balance', label: 'Trial Balance' },
+  { id: 'account-listing', label: 'Account Listing' },
+  { id: 'cash-flow', label: 'Cash Flow' },
+  { id: 'financial', label: 'Financial Reports' },
+  { id: 'tax-report', label: 'Tax Report' },
+  { id: 'tax-return', label: 'Tax Return' },
+  { id: 'ewt-report', label: 'EWT Report' },
+  { id: 'billing', label: 'Billing' },
+  { id: 'settings', label: 'Settings' },
+]
 
 export default function Settings({ userEmail }) {
   const { settings, updateSettings, deleteAllData, pending } = useStore()
@@ -68,6 +86,49 @@ export default function Settings({ userEmail }) {
     updateSettings(form)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  // ── Team Members: persists immediately on every change, same reasoning
+  // as the logo above — this is its own card and shouldn't depend on
+  // remembering to click "Save Settings" elsewhere on the page. ──
+  const teamMembers = form.teamMembers || []
+  const [newMemberName, setNewMemberName] = useState('')
+  const [newMemberPassword, setNewMemberPassword] = useState('')
+
+  function persistTeam(updatedMembers) {
+    const updated = { ...form, teamMembers: updatedMembers }
+    setForm(updated)
+    updateSettings(updated)
+  }
+
+  function addMember() {
+    if (!newMemberName.trim() || !newMemberPassword.trim()) return
+    const member = {
+      id: crypto.randomUUID(),
+      name: newMemberName.trim(),
+      password: newMemberPassword,
+      isAdmin: false,
+      permissions: {},
+    }
+    persistTeam([...teamMembers, member])
+    setNewMemberName('')
+    setNewMemberPassword('')
+  }
+
+  function updateMember(id, changes) {
+    persistTeam(teamMembers.map(m => m.id === id ? { ...m, ...changes } : m))
+  }
+
+  function toggleMemberPage(id, pageId) {
+    const member = teamMembers.find(m => m.id === id)
+    if (!member) return
+    const permissions = { ...member.permissions, [pageId]: !member.permissions?.[pageId] }
+    updateMember(id, { permissions })
+  }
+
+  function removeMember(id) {
+    if (!confirm('Remove this team member? They\'ll no longer be able to identify themselves on this account.')) return
+    persistTeam(teamMembers.filter(m => m.id !== id))
   }
 
   return (
@@ -292,6 +353,98 @@ export default function Settings({ userEmail }) {
         }}>
           Delete All My Data
         </button>
+      </div>
+
+      <div className="card">
+        <div className="card-title" style={{ marginBottom: 4 }}>Team Members</div>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+          Let more than one person use this login and still get their own view. Once you add
+          anyone here, the app will ask "Who's using this?" on every device — so add yourself
+          too, with Admin checked, or you could lock yourself out of tabs.
+        </div>
+
+        <div style={{
+          fontSize: 11.5, color: 'var(--text-3)', background: 'var(--surface2)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          padding: '10px 12px', marginBottom: 16, lineHeight: 1.6,
+        }}>
+          Important: this is a convenience layer, not real per-user security. Everyone still
+          shares the exact same login and database access underneath — a restricted tab is
+          hidden behind a read-only overlay in the app's interface, not blocked by the database
+          itself. It stops accidental edits and keeps tabs organized by person; it won't stop
+          someone determined to get around it (e.g. via browser dev tools). Passwords here
+          aren't encrypted, same as the deletion password above.
+        </div>
+
+        {teamMembers.length === 0 && (
+          <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 14 }}>No team members yet — just you.</div>
+        )}
+
+        {teamMembers.map(m => (
+          <div key={m.id} style={{
+            border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+            padding: '12px 14px', marginBottom: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+              <input
+                className="form-input" style={{ maxWidth: 180, fontWeight: 600 }}
+                value={m.name} onChange={e => updateMember(m.id, { name: e.target.value })}
+              />
+              <input
+                className="form-input" type="password" style={{ maxWidth: 140 }}
+                value={m.password} onChange={e => updateMember(m.id, { password: e.target.value })}
+                placeholder="Password"
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!m.isAdmin} onChange={e => updateMember(m.id, { isAdmin: e.target.checked })} />
+                <Shield size={13} /> Admin (full access, can edit Settings)
+              </label>
+              <button
+                className="icon-btn" style={{ color: 'var(--red)', marginLeft: 'auto' }}
+                onClick={() => removeMember(m.id)}
+                title="Remove team member"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+
+            {!m.isAdmin && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>Can edit these tabs (unchecked tabs stay visible, read-only):</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {TEAM_PAGES.map(p => (
+                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!m.permissions?.[p.id]}
+                        onChange={() => toggleMemberPage(m.id, p.id)}
+                      />
+                      {p.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+          <input
+            className="form-input" style={{ maxWidth: 180 }}
+            value={newMemberName} onChange={e => setNewMemberName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addMember()}
+            placeholder="Name"
+          />
+          <input
+            className="form-input" type="password" style={{ maxWidth: 140 }}
+            value={newMemberPassword} onChange={e => setNewMemberPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addMember()}
+            placeholder="Password"
+          />
+          <button className="btn btn-ghost btn-sm" onClick={addMember} disabled={!newMemberName.trim() || !newMemberPassword.trim()}>
+            <Plus size={14} /> Add Team Member
+          </button>
+        </div>
       </div>
     </div>
   )

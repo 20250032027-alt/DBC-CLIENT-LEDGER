@@ -19,6 +19,10 @@ const defaultSettings = {
   taxScheme: 'vat', // 'vat' | 'percentage'
   vatRate: 12,
   percentageTaxRate: 3,
+  // Team Members: [{ id, name, password, isAdmin, permissions: { [pageId]: true } }]
+  // See useTeam() in App.jsx for how this gets enforced. Empty array = the
+  // feature is unused and nobody sees any change from today's behavior.
+  teamMembers: [],
 }
 
 function sortByCode(list) {
@@ -57,7 +61,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     setVouchers(vouData)
     setBills(billData)
     setTemplates(tplData)
-    if (setRow) setSettings(setRow)
+    if (setRow) setSettings({ ...defaultSettings, ...setRow })
     setConflicts(conflictRows)
     setPending(await pendingCount())
   }, [userId])
