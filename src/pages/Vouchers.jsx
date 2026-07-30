@@ -568,6 +568,101 @@ function MemoAutocomplete({ value, onChange, recentMemos, placeholder, style }) 
   )
 }
 
+// Same interaction pattern as MemoAutocomplete above, but keyed on the
+// payee INDEX (name -> most recently used TIN/address) so picking a
+// previously-used name also fills in the rest, per the request: "if
+// previously used payee it will index all previously used name, and tin
+// and address accordingly."
+function PayeeAutocomplete({ value, onChange, onSelectPayee, payeeIndex, placeholder, style }) {
+  const [open, setOpen] = useState(false)
+  const [highlighted, setHighlighted] = useState(0)
+  const wrapRef = useRef(null)
+  const itemRefs = useRef([])
+
+  value = value || ''
+  const q = value.trim().toLowerCase()
+  const allNames = [...payeeIndex.values()].map(p => p.name)
+  const suggestions = allNames.filter(n => n.toLowerCase().includes(q) && n.toLowerCase() !== q).slice(0, 6)
+
+  useEffect(() => { setHighlighted(0) }, [q])
+
+  useEffect(() => {
+    if (open && itemRefs.current[highlighted]) {
+      itemRefs.current[highlighted].scrollIntoView({ block: 'nearest' })
+    }
+  }, [highlighted, open])
+
+  useEffect(() => {
+    function handler(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  function select(name) {
+    onChange(name)
+    const entry = payeeIndex.get(name.toLowerCase())
+    if (entry) onSelectPayee(entry)
+    setOpen(false)
+  }
+
+  function handleKeyDown(e) {
+    if (!open || suggestions.length === 0) {
+      if (e.key === 'ArrowDown' && suggestions.length > 0) { setOpen(true); e.preventDefault() }
+      return
+    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlighted(h => Math.min(h + 1, suggestions.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlighted(h => Math.max(h - 1, 0)) }
+    else if (e.key === 'Enter') { e.preventDefault(); select(suggestions[highlighted]) }
+    else if (e.key === 'Escape') { setOpen(false) }
+    else if (e.key === 'Tab') { if (suggestions.length > 0) { e.preventDefault(); select(suggestions[highlighted]) } }
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <input className="form-input" value={value}
+        style={style}
+        placeholder={placeholder}
+        autoComplete="off"
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+      />
+      {open && suggestions.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0,
+          background: 'var(--surface2)',
+          border: '1px solid var(--accent)',
+          borderRadius: 'var(--radius-sm)',
+          zIndex: 1000,
+          boxShadow: '0 8px 24px rgba(16,24,40,0.16)',
+          overflow: 'auto',
+          maxHeight: 220,
+          marginTop: 2,
+        }}>
+          {suggestions.map((n, i) => (
+            <div key={i}
+              ref={el => { itemRefs.current[i] = el }}
+              onMouseDown={() => select(n)}
+              onMouseEnter={() => setHighlighted(i)}
+              style={{
+                padding: '8px 10px', cursor: 'pointer', fontSize: 12,
+                background: i === highlighted ? 'var(--accent-glow)' : 'transparent',
+                borderBottom: i < suggestions.length - 1 ? '1px solid var(--border)' : 'none',
+                color: i === highlighted ? 'var(--text-1)' : 'var(--text-2)',
+                outline: i === highlighted ? '1px solid var(--accent)' : 'none',
+                outlineOffset: -1,
+              }}>
+              {n}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, index, onFocus }) {
   // Tab on last credit field → add new row
   function handleCreditKeyDown(e) {
@@ -1377,7 +1472,7 @@ function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
   )
 }
 
-function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, settings }) {
+function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, payeeIndex, settings }) {
   const blankEntry = () => ({ account: '', description: '', debit: '', credit: '', id: crypto.randomUUID() })
   const [form, setForm] = useState(voucher ? { ...voucher, memo: voucher.memo || '' } : {
     type: 'general', date: new Date().toISOString().slice(0, 10),
@@ -1529,7 +1624,20 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
           </div>
           <div className="form-group form-col-full">
             <label className="form-label">Payee <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(shown on the printed voucher — doesn't need to be a saved client)</span></label>
-            <input className="form-input" value={form.payee} onChange={e => setF('payee', e.target.value)} placeholder="Name of person or entity being paid / received from" />
+            <PayeeAutocomplete
+              value={form.payee}
+              onChange={v => setF('payee', v)}
+              onSelectPayee={entry => setForm(f => ({
+                ...f,
+                payee: entry.name,
+                // Don't clobber anything already typed — same rule as the
+                // client-based autofill above.
+                payeeTin: f.payeeTin ? f.payeeTin : entry.tin,
+                payeeAddress: f.payeeAddress ? f.payeeAddress : entry.address,
+              }))}
+              payeeIndex={payeeIndex}
+              placeholder="Name of person or entity being paid / received from"
+            />
           </div>
           {(form.type === 'cash receipt' || form.type === 'cash disbursement') && (
             <>
@@ -1784,6 +1892,19 @@ export default function Vouchers() {
     [...vouchers].reverse().map(v => v.memo).filter(Boolean)
   )].slice(0, 20)
 
+  // Payee name -> most recently used TIN/address for that name, so typing
+  // a name used before can auto-fill the rest. Most recent voucher wins if
+  // the same name was ever entered with different TIN/address over time.
+  const payeeIndex = new Map()
+  ;[...vouchers].reverse().forEach(v => {
+    const name = (v.payee || '').trim()
+    if (!name) return
+    const key = name.toLowerCase()
+    if (!payeeIndex.has(key)) {
+      payeeIndex.set(key, { name, tin: v.payeeTin || '', address: v.payeeAddress || '' })
+    }
+  })
+
   function copyNumber(num) {
     navigator.clipboard.writeText(num).then(() => {
       setCopied(num)
@@ -1978,6 +2099,7 @@ export default function Vouchers() {
           templates={templates}
           settings={settings}
           recentMemos={recentMemos}
+          payeeIndex={payeeIndex}
           onSaveTemplate={addTemplate}
           onDeleteTemplate={deleteTemplate}
           onClose={() => setModal(null)}
