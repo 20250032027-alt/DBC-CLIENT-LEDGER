@@ -36,9 +36,23 @@ function renderMarkdownLite(text) {
   }
 
   lines.forEach((line, i) => {
+    const heading = line.match(/^\s*(#{1,4})\s+(.*)/)
     const bullet = line.match(/^\s*[-*]\s+(.*)/)
     const numbered = line.match(/^\s*\d+\.\s+(.*)/)
-    if (bullet) {
+    if (heading) {
+      flushList()
+      const level = heading[1].length
+      blocks.push(
+        <div key={i} style={{
+          fontWeight: 700,
+          fontSize: level <= 2 ? 13.5 : 12.5,
+          marginTop: blocks.length ? 8 : 0,
+          marginBottom: 3,
+        }}>
+          {renderInline(heading[2], i)}
+        </div>
+      )
+    } else if (bullet) {
       if (listType !== 'ul') flushList()
       listType = 'ul'
       list = list || []

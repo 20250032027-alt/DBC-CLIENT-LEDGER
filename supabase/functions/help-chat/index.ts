@@ -100,7 +100,11 @@ Deno.serve(async (req: Request) => {
       systemInstruction: { parts: [{ text: buildSystemPrompt(dataSummaryText) }] },
       generationConfig: {
         temperature: 0.3, // low — this should answer reliably from the doc, not improvise
-        maxOutputTokens: 2048, // was 800 — answers were getting cut off mid-sentence.
+        maxOutputTokens: 4096, // was 2048, then 800 — a full account listing across 5
+        // categories legitimately needs more room than a typical short answer. Flash-tier
+        // pricing makes this cheap even at the ceiling (worst case ~$0.03-0.07 per response
+        // at Gemini 3.5 Flash's per-token rate) — this is a safety margin, not a cost risk,
+        // since most answers won't come close to using it.
         // Some Gemini model tiers count invisible "thinking" tokens against
         // maxOutputTokens, which can silently eat most of a small budget
         // before the visible answer even starts. thinkingBudget: 0 asks the
