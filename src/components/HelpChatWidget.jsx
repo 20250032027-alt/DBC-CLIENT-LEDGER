@@ -171,7 +171,14 @@ export default function HelpChatWidget({ page, activeMember }) {
         })
       }
     } catch (err) {
-      showToast('Help Chat had a problem answering that — try again in a moment.', 'error')
+      let userMessage = 'Help Chat had a problem answering that — try again in a moment.'
+      const raw = String(err.message || err)
+      if (raw.includes('QUOTA_EXCEEDED')) {
+        userMessage = 'Help Chat has hit today\'s usage limit and needs an admin to check the AI provider settings — try again later, or ask an admin to look into it.'
+      } else if (raw.includes('MODEL_OVERLOADED')) {
+        userMessage = 'Help Chat\'s AI provider is temporarily overloaded — try again in a minute or two.'
+      }
+      showToast(userMessage, 'error')
       setMessages(m => m.filter(msg => msg.text !== '')) // drop the empty placeholder if it never got filled
       console.error('help chat error:', err)
     } finally {

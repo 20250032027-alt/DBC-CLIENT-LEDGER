@@ -127,7 +127,17 @@ Deno.serve(async (req: Request) => {
 
     if (!geminiResp.ok || !geminiResp.body) {
       const errText = await geminiResp.text()
-      return new Response(JSON.stringify({ error: `Gemini API error: ${errText}` }), {
+      let friendlyMessage = `Gemini API error: ${errText}`
+      // 429 = daily/per-minute quota used up (common on the free tier).
+      // 503 = Google's servers are temporarily overloaded, unrelated to
+      // your quota. Distinguishing these matters — one means "wait for
+      // tomorrow or add billing," the other means "just try again."
+      if (geminiResp.status === 429) {
+        friendlyMessage = 'QUOTA_EXCEEDED: The Gemini API free-tier limit for this model has been used up for now. Either switch GEMINI_MODEL to a higher-quota model, or enable billing on the Google AI Studio project.'
+      } else if (geminiResp.status === 503) {
+        friendlyMessage = 'MODEL_OVERLOADED: Google\'s servers are temporarily at capacity for this model. This usually resolves within a minute or two — try again shortly.'
+      }
+      return new Response(JSON.stringify({ error: friendlyMessage }), {
         status: 502,
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
       })
