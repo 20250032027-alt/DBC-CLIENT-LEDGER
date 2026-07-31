@@ -77,6 +77,122 @@ export function nextVoucherNumber(type, date, existingVouchers) {
   return `${prefix} ${year}-${String(count + 1).padStart(3, '0')}`
 }
 
+// ── Shared financial-statement calculation ──
+// Extracted from FinancialCondition.jsx so the Financial Reports page and
+// the Help Assistant's data summary both compute totals from the exact
+// same code — they can't silently drift apart into showing different
+// numbers for "Total Revenue," which is what was happening before this
+// was shared (the assistant was improvising a simpler estimate that
+// didn't know about accrual-basis invoice revenue, and disagreed with
+// the real report).
+export function coaTypeToSection(account) {
+  const type = account.type
+  if (type === 'asset') {
+    const n = account.name.toLowerCase()
+    if (n.includes('equipment') || n.includes('furniture') || n.includes('vehicle')
+      || n.includes('building') || n.includes('land') || n.includes('property')) return 'fixed-asset'
+    const code = parseInt(account.code || '0', 10)
+    if (code >= 1500 && code < 2000) return 'fixed-asset'
+    return 'current-asset'
+  }
+  if (type === 'liability') return 'current-liability'
+  if (type === 'equity') return 'equity'
+  if (type === 'revenue') return 'revenue'
+  if (type === 'expense') return 'expense'
+  return null
+}
+
+export function normalBalance(type) {
+  return (type === 'asset' || type === 'expense') ? 1 : -1
+}
+
+export function buildLedger(vouchers) {
+  const map = {}
+  vouchers.forEach(v => {
+    ;(v.entries || []).forEach(e => {
+      if (!e.account) return
+      const key = e.account.trim().toLowerCase()
+      if (!map[key]) map[key] = { debit: 0, credit: 0 }
+      map[key].debit += parseFloat(e.debit || 0)
+      map[key].credit += parseFloat(e.credit || 0)
+    })
+  })
+  return map
+}
+
+export function buildFinancialSections(ledger, accounts, vouchers) {
+  const currentAssets = [], fixedAssets = [], currentLiabilities = [], equity = [], revenue = [], expenses = []
+
+  accounts.forEach(account => {
+    const section = coaTypeToSection(account)
+    if (!section) return
+    const key = account.name.trim().toLowerCase()
+    const t = ledger[key] || { debit: 0, credit: 0 }
+    if (t.debit === 0 && t.credit === 0) return
+    const amount = (t.debit - t.credit) * normalBalance(account.type)
+    const row = { name: account.name, amount }
+    if (section === 'current-asset') currentAssets.push(row)
+    else if (section === 'fixed-asset') fixedAssets.push(row)
+    else if (section === 'current-liability') currentLiabilities.push(row)
+    else if (section === 'equity') equity.push(row)
+    else if (section === 'revenue') revenue.push(row)
+    else if (section === 'expense') expenses.push(row)
+  })
+
+  const accountedFor = new Set(accounts.map(a => a.name.trim().toLowerCase()))
+  Object.keys(ledger).forEach(key => {
+    if (accountedFor.has(key)) return
+    const originalName = (() => {
+      for (const v of vouchers) {
+        for (const e of (v.entries || [])) {
+          if (e.account && e.account.trim().toLowerCase() === key) return e.account.trim()
+        }
+      }
+      return key
+    })()
+    const t = ledger[key]
+    const n = key
+    if (n.includes('cash') || n.includes('bank') || n.includes('receivable') || n.includes('prepaid') || n.includes('inventory'))
+      currentAssets.push({ name: originalName + ' ⚠', amount: t.debit - t.credit })
+    else if (n.includes('equipment') || n.includes('furniture') || n.includes('vehicle') || n.includes('building'))
+      fixedAssets.push({ name: originalName + ' ⚠', amount: t.debit - t.credit })
+    else if (n.includes('payable') || n.includes('unearned') || n.includes('tax'))
+      currentLiabilities.push({ name: originalName + ' ⚠', amount: t.credit - t.debit })
+    else if (n.includes('capital') || n.includes('retained') || n.includes('equity'))
+      equity.push({ name: originalName + ' ⚠', amount: t.credit - t.debit })
+    else if (n.includes('revenue') || n.includes('sales') || n.includes('income'))
+      revenue.push({ name: originalName + ' ⚠', amount: t.credit - t.debit })
+    else if (n.includes('expense') || n.includes('cost') || n.includes('salaries') || n.includes('rent') || n.includes('utilities') || n.includes('supplies'))
+      expenses.push({ name: originalName + ' ⚠', amount: t.debit - t.credit })
+    else
+      currentAssets.push({ name: originalName + ' ⚠ (unclassified)', amount: t.debit - t.credit })
+  })
+
+  return { currentAssets, fixedAssets, currentLiabilities, equity, revenue, expenses }
+}
+
+// Folds accrual-basis invoice revenue into the sections above, exactly as
+// FinancialCondition.jsx does: revenue is recognized when an invoice is
+// issued, not when it's paid. Bills that already auto-posted their own
+// voucher (reference === bill number) are skipped here since they're
+// already in the ledger — only "legacy" bills with no matching voucher
+// need this fallback, or they'd get counted twice.
+export function foldBillingIntoSections(sections, bills, vouchers) {
+  const billHasVoucher = b => vouchers.some(v => v.reference === b.number)
+  const legacyBills = bills.filter(b => !billHasVoucher(b))
+  const paidBills = legacyBills.filter(b => b.status === 'paid').reduce((s, b) => s + parseFloat(b.total || 0), 0)
+  const unpaidBills = legacyBills.filter(b => b.status !== 'paid').reduce((s, b) => s + parseFloat(b.total || 0), 0)
+  if (paidBills > 0) sections.currentAssets.push({ name: 'Cash from Collections', amount: paidBills })
+  if (unpaidBills > 0) sections.currentAssets.push({ name: 'Accounts Receivable (Invoices)', amount: unpaidBills })
+  const allBills = paidBills + unpaidBills
+  if (allBills > 0) {
+    const existing = sections.revenue.find(r => r.name === 'Service Revenue')
+    if (existing) existing.amount += allBills
+    else sections.revenue.push({ name: 'Billing Revenue (Invoiced)', amount: allBills })
+  }
+  return sections
+}
+
 export function nextBillNumber(date, existingBills) {
   const year = (date || new Date().toISOString()).slice(0, 4)
   const count = existingBills.filter(b => (b.number || '').includes(` ${year}-`)).length
@@ -127,17 +243,25 @@ export async function verifySecret(secret, salt, hash) {
 // account-wide switch, not per Team Member, since it's a decision about
 // whether the AI vendor sees real financial figures at all, not about who
 // on the team can see what — that's already handled by permissions.
-const KEY_BALANCE_ACCOUNTS = [
-  'Cash', 'Accounts Receivable', 'Accounts Payable',
-  'Withholding Tax Payable', 'Withholding Tax Receivable',
-  'VAT Payable', 'Percentage Tax Payable', 'Input VAT',
-]
+//
+// IMPORTANT: the totals below are computed with the exact same functions
+// (buildLedger/buildFinancialSections/foldBillingIntoSections) that the
+// Financial Reports page uses — this used to be a separate, simpler
+// calculation that didn't know about accrual-basis invoice revenue, which
+// is exactly why it once disagreed with what was on screen. Sharing the
+// same code means that can't happen again; if these ever look wrong, the
+// bug is in the shared function, not a second copy of the math.
 
-// How many recent posted vouchers to include with full debit/credit
-// entries. Bounded on purpose — this goes out on every single chat
-// message regardless of what's asked, so "all of history" would make
-// every message slower and pricier for no benefit to a typical question.
-const RECENT_VOUCHER_DETAIL_COUNT = 25
+// Every posted voucher goes in, in full, with its debit/credit entries —
+// not just a "recent N." A small business's yearly voucher count is
+// nowhere near enough to strain Gemini's 1M-token context, and a partial
+// window was exactly how the revenue mismatch happened before (questions
+// about totals got answered from whatever fit in the window instead of
+// everything). If this account ever grows into genuinely large voucher
+// volumes and this starts costing real money or slowing responses down,
+// that's the point to revisit a smarter approach (e.g. only fetching
+// detail for the period actually asked about) — not before.
+const MAX_DRAFT_VOUCHERS_LISTED = 100
 
 function formatVoucherLine(v, cur) {
   const who = v.payee || v.clientName || ''
@@ -153,8 +277,13 @@ function formatVoucherLine(v, cur) {
 }
 
 export function buildDataSummary({ vouchers, clients, bills, accounts, settings, activeMember, teamPages, page }) {
-  const posted = vouchers.filter(v => v.posted)
-  const drafts = vouchers.filter(v => !v.posted)
+  // postedOnly() — NOT a plain `v.posted` check — for the same reason the
+  // rest of the app uses it: a voucher with no `posted` field at all
+  // (legacy data) defaults to counted-as-posted here too. Using a
+  // different rule than the rest of the app was its own separate source
+  // of drift from what's on screen.
+  const posted = postedOnly(vouchers)
+  const drafts = vouchers.filter(v => v.posted === false)
   const cur = settings.currency
   const numbersEnabled = settings.helpAssistantDataEnabled !== false
 
@@ -168,7 +297,13 @@ export function buildDataSummary({ vouchers, clients, bills, accounts, settings,
   lines.push(`- Total: ${vouchers.length} (${drafts.length} draft, ${posted.length} posted)`)
   lines.push('')
   lines.push('CLIENTS')
-  lines.push(`- Total: ${clients.length}`)
+  if (clients.length === 0) {
+    lines.push('- None registered yet.')
+  } else {
+    clients.forEach(c => {
+      lines.push(`- ${c.name}${c.company ? ` (${c.company})` : ''} — ${c.type || 'individual'}${c.tin ? `, TIN ${c.tin}` : ''}${c.email ? `, ${c.email}` : ''}`)
+    })
+  }
   lines.push('')
   lines.push('BILLING')
   lines.push(`- Outstanding invoices: ${outstanding.length}`)
@@ -181,39 +316,56 @@ export function buildDataSummary({ vouchers, clients, bills, accounts, settings,
     lines.push('off for this account and an admin can enable it in Settings if they want the')
     lines.push('assistant to answer with real figures.')
   } else {
-    // Same normal-balance logic Trial Balance/Financial Reports use: asset
-    // and expense accounts increase with a debit, everything else
-    // increases with a credit.
-    const balances = {}
-    posted.forEach(v => {
-      ;(v.entries || []).forEach(e => {
-        if (!e.account) return
-        const acct = accounts.find(a => a.name === e.account)
-        const normal = acct && (acct.type === 'asset' || acct.type === 'expense') ? 1 : -1
-        const debit = parseFloat(e.debit || 0)
-        const credit = parseFloat(e.credit || 0)
-        balances[e.account] = (balances[e.account] || 0) + normal * (debit - credit)
-      })
-    })
+    // Exactly what the Financial Reports page computes — see the big
+    // comment above.
+    const ledger = buildLedger(posted)
+    const sections = buildFinancialSections(ledger, accounts, posted)
+    foldBillingIntoSections(sections, bills, posted)
+    const { currentAssets, fixedAssets, currentLiabilities, equity, revenue, expenses } = sections
+
+    const totalAssets = [...currentAssets, ...fixedAssets].reduce((s, r) => s + r.amount, 0)
+    const totalLiabilities = currentLiabilities.reduce((s, r) => s + r.amount, 0)
+    const totalEquity = equity.reduce((s, r) => s + r.amount, 0)
+    const totalRevenue = revenue.reduce((s, r) => s + r.amount, 0)
+    const totalExpenses = expenses.reduce((s, r) => s + r.amount, 0)
+    const netIncome = totalRevenue - totalExpenses
+
     const outstandingTotal = outstanding.reduce((s, b) => s + parseFloat(b.total || 0), 0)
-
     lines.push(`- Outstanding total: ${fmt(outstandingTotal, cur)}`)
+
     lines.push('')
-    lines.push('KEY BALANCES (from posted vouchers)')
-    KEY_BALANCE_ACCOUNTS.forEach(name => {
-      const acct = accounts.find(a => a.name.toLowerCase().includes(name.toLowerCase()))
-      if (acct && balances[acct.name] !== undefined) {
-        lines.push(`- ${acct.name}: ${fmt(balances[acct.name], cur)}`)
-      }
+    lines.push('FINANCIAL POSITION (all-time, all posted vouchers — matches the Financial Reports')
+    lines.push('page exactly; treat these five numbers as ground truth, don\'t re-derive them from')
+    lines.push('the voucher list below)')
+    lines.push(`- Total Assets: ${fmt(totalAssets, cur)}`)
+    lines.push(`- Total Liabilities: ${fmt(totalLiabilities, cur)}`)
+    lines.push(`- Total Equity: ${fmt(totalEquity, cur)}`)
+    lines.push(`- Total Revenue: ${fmt(totalRevenue, cur)}`)
+    lines.push(`- Total Expenses: ${fmt(totalExpenses, cur)}`)
+    lines.push(`- Net Income: ${fmt(netIncome, cur)}`)
+
+    lines.push('')
+    lines.push('ALL ACCOUNT BALANCES WITH ACTIVITY (posted vouchers; "Billing Revenue (Invoiced)" and')
+    lines.push('similar lines fold in invoices on an accrual basis, same as the Financial Reports page)')
+    ;[...currentAssets, ...fixedAssets, ...currentLiabilities, ...equity, ...revenue, ...expenses].forEach(r => {
+      lines.push(`- ${r.name}: ${fmt(r.amount, cur)}`)
     })
 
-    const recent = [...posted]
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-      .slice(0, RECENT_VOUCHER_DETAIL_COUNT)
-    if (recent.length > 0) {
+    if (posted.length > 0) {
       lines.push('')
-      lines.push(`RECENT POSTED VOUCHERS (most recent ${recent.length}, full debit/credit entries)`)
-      recent.forEach(v => lines.push(formatVoucherLine(v, cur)))
+      lines.push(`ALL POSTED VOUCHERS (${posted.length}, full debit/credit entries, most recent first) —`)
+      lines.push('for "how many/what\'s my balance" questions use FINANCIAL POSITION above; use this')
+      lines.push('list for questions about a SPECIFIC voucher or transaction')
+      ;[...posted]
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        .forEach(v => lines.push(formatVoucherLine(v, cur)))
+    }
+
+    if (drafts.length > 0) {
+      lines.push('')
+      lines.push(`DRAFT VOUCHERS (${drafts.length}, NOT posted — excluded from every total above and from`)
+      lines.push(`all reports until posted; showing up to ${MAX_DRAFT_VOUCHERS_LISTED})`)
+      drafts.slice(0, MAX_DRAFT_VOUCHERS_LISTED).forEach(v => lines.push(formatVoucherLine(v, cur)))
     }
   }
 

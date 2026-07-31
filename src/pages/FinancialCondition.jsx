@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, postedOnly } from '../utils'
+import { fmt, postedOnly, buildLedger, buildFinancialSections as buildSections, foldBillingIntoSections } from '../utils'
 import { BarChart3, X, Download } from 'lucide-react'
 
 async function exportFinancialReportToExcel({
@@ -80,93 +80,6 @@ async function exportFinancialReportToExcel({
 
   const dateStr = new Date().toISOString().slice(0, 10)
   XLSX.writeFile(wb, `dbc-client-ledger-financial-report-${dateStr}.xlsx`)
-}
-
-function coaTypeToSection(account) {
-  const type = account.type
-  if (type === 'asset') {
-    const n = account.name.toLowerCase()
-    if (n.includes('equipment') || n.includes('furniture') || n.includes('vehicle')
-      || n.includes('building') || n.includes('land') || n.includes('property')) return 'fixed-asset'
-    const code = parseInt(account.code || '0', 10)
-    if (code >= 1500 && code < 2000) return 'fixed-asset'
-    return 'current-asset'
-  }
-  if (type === 'liability') return 'current-liability'
-  if (type === 'equity') return 'equity'
-  if (type === 'revenue') return 'revenue'
-  if (type === 'expense') return 'expense'
-  return null
-}
-
-function normalBalance(type) {
-  return (type === 'asset' || type === 'expense') ? 1 : -1
-}
-
-function buildLedger(vouchers) {
-  const map = {}
-  vouchers.forEach(v => {
-    ;(v.entries || []).forEach(e => {
-      if (!e.account) return
-      const key = e.account.trim().toLowerCase()
-      if (!map[key]) map[key] = { debit: 0, credit: 0 }
-      map[key].debit += parseFloat(e.debit || 0)
-      map[key].credit += parseFloat(e.credit || 0)
-    })
-  })
-  return map
-}
-
-function buildSections(ledger, accounts, vouchers) {
-  const currentAssets = [], fixedAssets = [], currentLiabilities = [], equity = [], revenue = [], expenses = []
-
-  accounts.forEach(account => {
-    const section = coaTypeToSection(account)
-    if (!section) return
-    const key = account.name.trim().toLowerCase()
-    const t = ledger[key] || { debit: 0, credit: 0 }
-    if (t.debit === 0 && t.credit === 0) return
-    const amount = (t.debit - t.credit) * normalBalance(account.type)
-    const row = { name: account.name, amount }
-    if (section === 'current-asset') currentAssets.push(row)
-    else if (section === 'fixed-asset') fixedAssets.push(row)
-    else if (section === 'current-liability') currentLiabilities.push(row)
-    else if (section === 'equity') equity.push(row)
-    else if (section === 'revenue') revenue.push(row)
-    else if (section === 'expense') expenses.push(row)
-  })
-
-  // Orphan accounts
-  const accountedFor = new Set(accounts.map(a => a.name.trim().toLowerCase()))
-  Object.keys(ledger).forEach(key => {
-    if (accountedFor.has(key)) return
-    const originalName = (() => {
-      for (const v of vouchers) {
-        for (const e of (v.entries || [])) {
-          if (e.account && e.account.trim().toLowerCase() === key) return e.account.trim()
-        }
-      }
-      return key
-    })()
-    const t = ledger[key]
-    const n = key
-    if (n.includes('cash') || n.includes('bank') || n.includes('receivable') || n.includes('prepaid') || n.includes('inventory'))
-      currentAssets.push({ name: originalName + ' ⚠', amount: t.debit - t.credit })
-    else if (n.includes('equipment') || n.includes('furniture') || n.includes('vehicle') || n.includes('building'))
-      fixedAssets.push({ name: originalName + ' ⚠', amount: t.debit - t.credit })
-    else if (n.includes('payable') || n.includes('unearned') || n.includes('tax'))
-      currentLiabilities.push({ name: originalName + ' ⚠', amount: t.credit - t.debit })
-    else if (n.includes('capital') || n.includes('retained') || n.includes('equity'))
-      equity.push({ name: originalName + ' ⚠', amount: t.credit - t.debit })
-    else if (n.includes('revenue') || n.includes('sales') || n.includes('income'))
-      revenue.push({ name: originalName + ' ⚠', amount: t.credit - t.debit })
-    else if (n.includes('expense') || n.includes('cost') || n.includes('salaries') || n.includes('rent') || n.includes('utilities') || n.includes('supplies'))
-      expenses.push({ name: originalName + ' ⚠', amount: t.debit - t.credit })
-    else
-      currentAssets.push({ name: originalName + ' ⚠ (unclassified)', amount: t.debit - t.credit })
-  })
-
-  return { currentAssets, fixedAssets, currentLiabilities, equity, revenue, expenses }
 }
 
 function Section({ title, rows, total, color }) {
@@ -267,20 +180,7 @@ export default function FinancialCondition() {
   // through the ledger above via their own Accounts Receivable / Revenue /
   // Cash accounts. Only bills predating that feature — with no matching
   // voucher — need this fallback, or every such invoice gets counted twice.
-  const billHasVoucher = b => vouchers.some(v => v.reference === b.number)
-  const legacyBsBills = bsBills.filter(b => !billHasVoucher(b))
-
-  const paidBillsBS = legacyBsBills.filter(b => b.status === 'paid').reduce((s, b) => s + parseFloat(b.total || 0), 0)
-  const unpaidBillsBS = legacyBsBills.filter(b => b.status !== 'paid').reduce((s, b) => s + parseFloat(b.total || 0), 0)
-  if (paidBillsBS > 0) currentAssets.push({ name: 'Cash from Collections', amount: paidBillsBS })
-  if (unpaidBillsBS > 0) currentAssets.push({ name: 'Accounts Receivable (Invoices)', amount: unpaidBillsBS })
-
-  const allBillsBS = paidBillsBS + unpaidBillsBS
-  if (allBillsBS > 0) {
-    const existingBS = bsRevenueRows.find(r => r.name === 'Service Revenue')
-    if (existingBS) existingBS.amount += allBillsBS
-    else bsRevenueRows.push({ name: 'Billing Revenue (Invoiced)', amount: allBillsBS })
-  }
+  foldBillingIntoSections(bsSections, bsBills, vouchers)
 
   const totalCurrentAssets = currentAssets.reduce((s, r) => s + r.amount, 0)
   const totalFixedAssets = fixedAssets.reduce((s, r) => s + r.amount, 0)
@@ -301,15 +201,7 @@ export default function FinancialCondition() {
   // Income Statement figures — its own date range, for display only
   const { revenue, expenses } = isSections
 
-  const legacyIsBills = isBills.filter(b => !billHasVoucher(b))
-  const paidBillsIS = legacyIsBills.filter(b => b.status === 'paid').reduce((s, b) => s + parseFloat(b.total || 0), 0)
-  const unpaidBillsIS = legacyIsBills.filter(b => b.status !== 'paid').reduce((s, b) => s + parseFloat(b.total || 0), 0)
-  const allBillsIS = paidBillsIS + unpaidBillsIS
-  if (allBillsIS > 0) {
-    const existing = revenue.find(r => r.name === 'Service Revenue')
-    if (existing) existing.amount += allBillsIS
-    else revenue.push({ name: 'Billing Revenue (Invoiced)', amount: allBillsIS })
-  }
+  foldBillingIntoSections(isSections, isBills, vouchers)
 
   const totalRevenue = revenue.reduce((s, r) => s + r.amount, 0)
   const totalExpenses = expenses.reduce((s, r) => s + r.amount, 0)

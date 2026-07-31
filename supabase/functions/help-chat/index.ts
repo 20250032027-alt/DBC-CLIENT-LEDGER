@@ -100,7 +100,16 @@ Deno.serve(async (req: Request) => {
       systemInstruction: { parts: [{ text: buildSystemPrompt(dataSummaryText) }] },
       generationConfig: {
         temperature: 0.3, // low — this should answer reliably from the doc, not improvise
-        maxOutputTokens: 800, // a help answer shouldn't need an essay
+        maxOutputTokens: 2048, // was 800 — answers were getting cut off mid-sentence.
+        // Some Gemini model tiers count invisible "thinking" tokens against
+        // maxOutputTokens, which can silently eat most of a small budget
+        // before the visible answer even starts. thinkingBudget: 0 asks the
+        // model to skip that for this fast/scoped Q&A use case — if this
+        // model tier doesn't support the field, Gemini's API has
+        // historically just ignored unrecognized fields rather than
+        // erroring, but this is worth confirming if truncation still
+        // happens after this change.
+        thinkingConfig: { thinkingBudget: 0 },
       },
     }
 
@@ -131,6 +140,7 @@ Deno.serve(async (req: Request) => {
     const stream = new ReadableStream({
       async start(controller) {
         let buffer = ''
+        let hitMaxTokens = false
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
@@ -145,11 +155,18 @@ Deno.serve(async (req: Request) => {
               const parsed = JSON.parse(jsonStr)
               const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text
               if (text) controller.enqueue(encoder.encode(text))
+              if (parsed?.candidates?.[0]?.finishReason === 'MAX_TOKENS') hitMaxTokens = true
             } catch {
               // Ignore malformed SSE fragments (partial JSON split across
               // chunks) — the next chunk's data usually recovers it.
             }
           }
+        }
+        // Make truncation visible instead of silently ending mid-sentence —
+        // if this ever shows up again, maxOutputTokens needs raising further
+        // or the question needs the model to be more concise.
+        if (hitMaxTokens) {
+          controller.enqueue(encoder.encode('\n\n_[Response was cut off for being too long — try asking a more specific question.]_'))
         }
         controller.close()
       },
