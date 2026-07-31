@@ -27,6 +27,11 @@ const defaultSettings = {
   // for how this gets enforced. Empty array = the
   // feature is unused and nobody sees any change from today's behavior.
   teamMembers: [],
+  // Lets the Help Assistant chatbot see real voucher/account figures
+  // (balances, individual debit/credit entries) rather than just
+  // explaining how the app works in the abstract. Account-wide, not
+  // per Team Member — see Settings > Help Assistant.
+  helpAssistantDataEnabled: true,
 }
 
 function sortByCode(list) {

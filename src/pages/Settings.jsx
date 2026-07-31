@@ -495,6 +495,36 @@ export default function Settings({ userEmail }) {
           </button>
         </div>
       </div>
+
+      <div className="card">
+        <div className="card-title" style={{ marginBottom: 4 }}>Help Assistant</div>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+          Controls whether the in-app chat assistant can see real figures from your books —
+          account balances and individual voucher debit/credit entries — when answering
+          questions, rather than only explaining how the app works in general.
+        </div>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={form.helpAssistantDataEnabled !== false}
+            onChange={e => {
+              const updated = { ...form, helpAssistantDataEnabled: e.target.checked }
+              setForm(updated)
+              updateSettings(updated)
+            }}
+            style={{ marginTop: 2 }}
+          />
+          <span style={{ fontSize: 13 }}>
+            Let the assistant see real voucher and account figures
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+              On by default. Turning this off doesn't limit who on your team can see what — that's
+              controlled by Team Members above — this is specifically about whether the AI
+              assistant itself is shown actual peso amounts at all. Applies to everyone using this
+              account, saves immediately.
+            </div>
+          </span>
+        </label>
+      </div>
     </div>
   )
 }

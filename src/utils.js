@@ -109,10 +109,7 @@ export async function verifySecret(secret, salt, hash) {
 
 // ── Help chat data summary ──
 // Built fresh on every chat message from data already loaded in the app —
-// no new database queries. Deliberately kept to summary numbers, not raw
-// transaction lists (dumping every voucher line into every request would
-// be slow and expensive for no real benefit to a "how many/what's my
-// balance" question).
+// no new database queries.
 //
 // On Team Member permissions: this does NOT hide numbers from restricted
 // members — the app itself already shows every tab's real data to
@@ -122,35 +119,47 @@ export async function verifySecret(secret, salt, hash) {
 // sitting inside. What this DOES do is tell the model who's asking and
 // what they can/can't edit, so it can avoid steering someone toward an
 // action they don't have permission to take.
+//
+// On settings.helpAssistantDataEnabled (Settings > Help Assistant, on by
+// default): when off, the summary sticks to structural counts (how many
+// vouchers, how many clients) and leaves out every peso figure — no
+// balances, no invoice totals, no individual voucher entries. This is an
+// account-wide switch, not per Team Member, since it's a decision about
+// whether the AI vendor sees real financial figures at all, not about who
+// on the team can see what — that's already handled by permissions.
 const KEY_BALANCE_ACCOUNTS = [
   'Cash', 'Accounts Receivable', 'Accounts Payable',
   'Withholding Tax Payable', 'Withholding Tax Receivable',
   'VAT Payable', 'Percentage Tax Payable', 'Input VAT',
 ]
 
+// How many recent posted vouchers to include with full debit/credit
+// entries. Bounded on purpose — this goes out on every single chat
+// message regardless of what's asked, so "all of history" would make
+// every message slower and pricier for no benefit to a typical question.
+const RECENT_VOUCHER_DETAIL_COUNT = 25
+
+function formatVoucherLine(v, cur) {
+  const who = v.payee || v.clientName || ''
+  const header = `- ${v.number || '(no number)'} — ${v.date || ''} — ${VOUCHER_TITLE[v.type] || v.type}${who ? ` — ${who}` : ''}${v.memo ? ` — "${v.memo}"` : ''}`
+  const entryLines = (v.entries || []).map(e => {
+    const debit = parseFloat(e.debit || 0)
+    const credit = parseFloat(e.credit || 0)
+    if (debit > 0) return `    Dr ${e.account}  ${fmt(debit, cur)}`
+    if (credit > 0) return `    Cr ${e.account}  ${fmt(credit, cur)}`
+    return null
+  }).filter(Boolean)
+  return [header, ...entryLines].join('\n')
+}
+
 export function buildDataSummary({ vouchers, clients, bills, accounts, settings, activeMember, teamPages, page }) {
   const posted = vouchers.filter(v => v.posted)
   const drafts = vouchers.filter(v => !v.posted)
   const cur = settings.currency
-
-  // Same normal-balance logic Trial Balance/Financial Reports use: asset
-  // and expense accounts increase with a debit, everything else increases
-  // with a credit.
-  const balances = {}
-  posted.forEach(v => {
-    ;(v.entries || []).forEach(e => {
-      if (!e.account) return
-      const acct = accounts.find(a => a.name === e.account)
-      const normal = acct && (acct.type === 'asset' || acct.type === 'expense') ? 1 : -1
-      const debit = parseFloat(e.debit || 0)
-      const credit = parseFloat(e.credit || 0)
-      balances[e.account] = (balances[e.account] || 0) + normal * (debit - credit)
-    })
-  })
+  const numbersEnabled = settings.helpAssistantDataEnabled !== false
 
   const outstanding = bills.filter(b => b.status !== 'paid')
   const overdue = bills.filter(b => b.status === 'overdue')
-  const outstandingTotal = outstanding.reduce((s, b) => s + parseFloat(b.total || 0), 0)
 
   const lines = []
   lines.push(`As of: ${new Date().toLocaleString('en-PH')}`)
@@ -162,16 +171,52 @@ export function buildDataSummary({ vouchers, clients, bills, accounts, settings,
   lines.push(`- Total: ${clients.length}`)
   lines.push('')
   lines.push('BILLING')
-  lines.push(`- Outstanding invoices: ${outstanding.length} (${fmt(outstandingTotal, cur)} total)`)
+  lines.push(`- Outstanding invoices: ${outstanding.length}`)
   lines.push(`- Overdue: ${overdue.length}`)
-  lines.push('')
-  lines.push('KEY BALANCES (from posted vouchers)')
-  KEY_BALANCE_ACCOUNTS.forEach(name => {
-    const acct = accounts.find(a => a.name.toLowerCase().includes(name.toLowerCase()))
-    if (acct && balances[acct.name] !== undefined) {
-      lines.push(`- ${acct.name}: ${fmt(balances[acct.name], cur)}`)
+
+  if (!numbersEnabled) {
+    lines.push('')
+    lines.push('FINANCIAL FIGURES: Turned off in Settings > Help Assistant. Do not state or estimate')
+    lines.push('any peso amounts, balances, or totals — if asked for a number, say this is turned')
+    lines.push('off for this account and an admin can enable it in Settings if they want the')
+    lines.push('assistant to answer with real figures.')
+  } else {
+    // Same normal-balance logic Trial Balance/Financial Reports use: asset
+    // and expense accounts increase with a debit, everything else
+    // increases with a credit.
+    const balances = {}
+    posted.forEach(v => {
+      ;(v.entries || []).forEach(e => {
+        if (!e.account) return
+        const acct = accounts.find(a => a.name === e.account)
+        const normal = acct && (acct.type === 'asset' || acct.type === 'expense') ? 1 : -1
+        const debit = parseFloat(e.debit || 0)
+        const credit = parseFloat(e.credit || 0)
+        balances[e.account] = (balances[e.account] || 0) + normal * (debit - credit)
+      })
+    })
+    const outstandingTotal = outstanding.reduce((s, b) => s + parseFloat(b.total || 0), 0)
+
+    lines.push(`- Outstanding total: ${fmt(outstandingTotal, cur)}`)
+    lines.push('')
+    lines.push('KEY BALANCES (from posted vouchers)')
+    KEY_BALANCE_ACCOUNTS.forEach(name => {
+      const acct = accounts.find(a => a.name.toLowerCase().includes(name.toLowerCase()))
+      if (acct && balances[acct.name] !== undefined) {
+        lines.push(`- ${acct.name}: ${fmt(balances[acct.name], cur)}`)
+      }
+    })
+
+    const recent = [...posted]
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, RECENT_VOUCHER_DETAIL_COUNT)
+    if (recent.length > 0) {
+      lines.push('')
+      lines.push(`RECENT POSTED VOUCHERS (most recent ${recent.length}, full debit/credit entries)`)
+      recent.forEach(v => lines.push(formatVoucherLine(v, cur)))
     }
-  })
+  }
+
   lines.push('')
   lines.push(`TAX SCHEME: ${settings.taxScheme === 'vat' ? `VAT (${settings.vatRate}%)` : `Percentage Tax (${settings.percentageTaxRate}%)`}`)
   lines.push('')
