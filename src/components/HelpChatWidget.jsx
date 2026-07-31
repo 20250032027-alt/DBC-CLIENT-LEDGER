@@ -124,7 +124,14 @@ export default function HelpChatWidget({ page, activeMember }) {
     if (!text || streaming) return
 
     const nextMessages = [...messages, { role: 'user', text }]
-    setMessages(nextMessages)
+    // Placeholder goes in immediately, before anything async — this is what
+    // makes ThinkingDots show up. It used to get added only after the
+    // fetch resolved, which meant total silence (no dots, no feedback at
+    // all) during the session lookup + data summary build + network round
+    // trip, and if the request errored before a response body ever came
+    // back, the placeholder never appeared at all — from the outside that
+    // looks exactly like "nothing happened."
+    setMessages([...nextMessages, { role: 'model', text: '' }])
     setInput('')
     setStreaming(true)
 
@@ -132,6 +139,7 @@ export default function HelpChatWidget({ page, activeMember }) {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         showToast('You need to be signed in to use Help Chat.', 'error')
+        setMessages(nextMessages) // drop the placeholder, nothing is happening
         setStreaming(false)
         return
       }
@@ -154,9 +162,8 @@ export default function HelpChatWidget({ page, activeMember }) {
         throw new Error(errBody || `Request failed (${res.status})`)
       }
 
-      // Stream the response in as it arrives, appending to a single
-      // growing assistant message rather than waiting for the full thing.
-      setMessages(m => [...m, { role: 'model', text: '' }])
+      // Stream the response in as it arrives, appending to the placeholder
+      // already sitting at the end of the message list.
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let full = ''
@@ -178,8 +185,8 @@ export default function HelpChatWidget({ page, activeMember }) {
       } else if (raw.includes('MODEL_OVERLOADED')) {
         userMessage = 'Help Chat\'s AI provider is temporarily overloaded — try again in a minute or two.'
       }
-      showToast(userMessage, 'error')
-      setMessages(m => m.filter(msg => msg.text !== '')) // drop the empty placeholder if it never got filled
+      showToast(userMessage, 'error', 7000) // longer than the default 4s — an error worth actually seeing
+      setMessages(nextMessages) // drop the empty placeholder, back to before this question was asked
       console.error('help chat error:', err)
     } finally {
       setStreaming(false)
