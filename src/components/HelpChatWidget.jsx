@@ -5,6 +5,70 @@ import { useStore } from '../store/useStore.jsx'
 import { buildDataSummary } from '../utils'
 import { showToast } from '../lib/toast'
 
+// ── Minimal markdown rendering — no new dependency ──
+// The model's answers use a small, predictable set of formatting: **bold**,
+// bullet lists, occasionally numbered steps. A full markdown library is
+// overkill for that; this handles exactly what actually shows up so
+// "**bold**" renders as bold instead of literal asterisks.
+function renderInline(text, keyPrefix) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={`${keyPrefix}-b${i}`}>{part.slice(2, -2)}</strong>
+    }
+    return <span key={`${keyPrefix}-t${i}`}>{part}</span>
+  })
+}
+
+function renderMarkdownLite(text) {
+  const lines = text.split('\n')
+  const blocks = []
+  let list = null
+  let listType = null // 'ul' | 'ol'
+
+  function flushList() {
+    if (list) {
+      const Tag = listType
+      blocks.push(<Tag key={`list-${blocks.length}`} style={{ margin: '2px 0 6px', paddingLeft: 18 }}>{list}</Tag>)
+      list = null
+      listType = null
+    }
+  }
+
+  lines.forEach((line, i) => {
+    const bullet = line.match(/^\s*[-*]\s+(.*)/)
+    const numbered = line.match(/^\s*\d+\.\s+(.*)/)
+    if (bullet) {
+      if (listType !== 'ul') flushList()
+      listType = 'ul'
+      list = list || []
+      list.push(<li key={i} style={{ marginBottom: 3 }}>{renderInline(bullet[1], i)}</li>)
+    } else if (numbered) {
+      if (listType !== 'ol') flushList()
+      listType = 'ol'
+      list = list || []
+      list.push(<li key={i} style={{ marginBottom: 3 }}>{renderInline(numbered[1], i)}</li>)
+    } else {
+      flushList()
+      if (line.trim() === '') {
+        blocks.push(<div key={`sp-${i}`} style={{ height: 6 }} />)
+      } else {
+        blocks.push(<div key={i} style={{ marginBottom: 2 }}>{renderInline(line, i)}</div>)
+      }
+    }
+  })
+  flushList()
+  return blocks
+}
+
+function ThinkingDots() {
+  return (
+    <span className="help-chat-dots">
+      <span /><span /><span />
+    </span>
+  )
+}
+
 // Mirrors TEAM_PAGES in Settings.jsx — needed here too so the data summary
 // can list which tabs the active Team Member can edit by their display
 // label, not just their internal page id. Kept as a separate constant
@@ -106,6 +170,7 @@ export default function HelpChatWidget({ page, activeMember }) {
       <button
         onClick={() => setOpen(o => !o)}
         title="Help"
+        className="help-chat-fab"
         style={{
           position: 'fixed', bottom: 20, right: 20, zIndex: 1000,
           width: 52, height: 52, borderRadius: '50%', border: 'none',
@@ -124,6 +189,7 @@ export default function HelpChatWidget({ page, activeMember }) {
           background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: 'var(--radius-lg)', boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          animation: 'fade-scale 0.18s cubic-bezier(0.4,0,0.2,1)', transformOrigin: 'bottom right',
         }}>
           <div style={{
             padding: '12px 14px', borderBottom: '1px solid var(--border)',
@@ -140,18 +206,22 @@ export default function HelpChatWidget({ page, activeMember }) {
                 if that's what's being asked.
               </div>
             )}
-            {messages.map((m, i) => (
-              <div key={i} style={{
-                alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '85%',
-                background: m.role === 'user' ? 'var(--accent)' : 'var(--surface2)',
-                color: m.role === 'user' ? '#fff' : 'var(--text-1)',
-                borderRadius: 10, padding: '8px 11px', fontSize: 12.5, lineHeight: 1.5,
-                whiteSpace: 'pre-wrap',
-              }}>
-                {m.text || (streaming && i === messages.length - 1 ? '…' : '')}
-              </div>
-            ))}
+            {messages.map((m, i) => {
+              const isLastAndEmpty = streaming && i === messages.length - 1 && m.role === 'model' && !m.text
+              return (
+                <div key={i} style={{
+                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '85%',
+                  background: m.role === 'user' ? 'var(--accent)' : 'var(--surface2)',
+                  color: m.role === 'user' ? '#fff' : 'var(--text-1)',
+                  borderRadius: 10, padding: '8px 11px', fontSize: 12.5, lineHeight: 1.5,
+                  whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined,
+                  animation: 'message-in 0.2s ease',
+                }}>
+                  {isLastAndEmpty ? <ThinkingDots /> : (m.role === 'model' ? renderMarkdownLite(m.text) : m.text)}
+                </div>
+              )
+            })}
           </div>
 
           <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 6 }}>
