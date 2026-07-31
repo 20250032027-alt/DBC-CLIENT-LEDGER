@@ -5,7 +5,7 @@ import { getInstallState, promptInstall } from '../lib/installPrompt'
 import { clearLocalDb } from '../lib/db'
 import { stopSync } from '../lib/sync'
 import { Save, LogOut, Cloud, Smartphone, X, RotateCcw, Plus, Trash2, Shield } from 'lucide-react'
-import { formatTin, normalizeTin } from '../utils'
+import { formatTin, normalizeTin, generateSalt, hashSecret, verifySecret } from '../utils'
 
 // Mirrors App.jsx's NAV ids/labels for the per-tab permission checkboxes
 // below. Keep in sync if pages are ever added, renamed, or removed there.
@@ -88,35 +88,71 @@ export default function Settings({ userEmail }) {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  // ── Team Members: persists immediately on every change, same reasoning
-  // as the logo above — this is its own card and shouldn't depend on
-  // remembering to click "Save Settings" elsewhere on the page. ──
-  const teamMembers = form.teamMembers || []
-  const [newMemberName, setNewMemberName] = useState('')
-  const [newMemberPassword, setNewMemberPassword] = useState('')
+  // ── Deletion password: same hashed-storage reasoning as Team Members
+  // below. Can't prefill/display the existing password since only its
+  // hash is stored — this is a "set a new one" field, not an editable
+  // text field. ──
+  const [newDeletePassword, setNewDeletePassword] = useState('')
 
-  function persistTeam(updatedMembers) {
-    const updated = { ...form, teamMembers: updatedMembers }
+  async function setDeletePassword() {
+    if (!newDeletePassword.trim()) return
+    const salt = form.pwSalt || generateSalt()
+    const deletePasswordHash = await hashSecret(newDeletePassword, salt)
+    const updated = { ...form, deletePasswordHash, deletePassword: '', pwSalt: salt }
+    setForm(updated)
+    updateSettings(updated)
+    setNewDeletePassword('')
+  }
+
+  function clearDeletePassword() {
+    const updated = { ...form, deletePasswordHash: '', deletePassword: '' }
     setForm(updated)
     updateSettings(updated)
   }
 
-  function addMember() {
+  // ── Team Members: persists immediately on every change, same reasoning
+  // as the logo above — this is its own card and shouldn't depend on
+  // remembering to click "Save Settings" elsewhere on the page. Passwords
+  // are hashed (see generateSalt/hashSecret in utils.js) — never stored
+  // or displayed in plain text, including while editing. ──
+  const teamMembers = form.teamMembers || []
+  const [newMemberName, setNewMemberName] = useState('')
+  const [newMemberPassword, setNewMemberPassword] = useState('')
+  const [pendingMemberPasswords, setPendingMemberPasswords] = useState({})
+
+  function persistTeam(updatedMembers, salt) {
+    const updated = { ...form, teamMembers: updatedMembers, ...(salt ? { pwSalt: salt } : {}) }
+    setForm(updated)
+    updateSettings(updated)
+  }
+
+  async function addMember() {
     if (!newMemberName.trim() || !newMemberPassword.trim()) return
+    const salt = form.pwSalt || generateSalt()
+    const passwordHash = await hashSecret(newMemberPassword, salt)
     const member = {
       id: crypto.randomUUID(),
       name: newMemberName.trim(),
-      password: newMemberPassword,
+      passwordHash,
       isAdmin: false,
       permissions: {},
     }
-    persistTeam([...teamMembers, member])
+    persistTeam([...teamMembers, member], salt)
     setNewMemberName('')
     setNewMemberPassword('')
   }
 
   function updateMember(id, changes) {
     persistTeam(teamMembers.map(m => m.id === id ? { ...m, ...changes } : m))
+  }
+
+  async function setMemberPassword(id) {
+    const plaintext = pendingMemberPasswords[id]
+    if (!plaintext || !plaintext.trim()) return
+    const salt = form.pwSalt || generateSalt()
+    const passwordHash = await hashSecret(plaintext, salt)
+    persistTeam(teamMembers.map(m => m.id === id ? { ...m, passwordHash } : m), salt)
+    setPendingMemberPasswords(p => ({ ...p, [id]: '' }))
   }
 
   function toggleMemberPage(id, pageId) {
@@ -305,14 +341,22 @@ export default function Settings({ userEmail }) {
 
         <div className="form-group" style={{ marginBottom: 14, maxWidth: 320 }}>
           <label className="form-label">Deletion Password <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional)</span></label>
-          <input className="form-input" type="password" value={form.deletePassword || ''}
-            onChange={e => setF('deletePassword', e.target.value)}
-            placeholder="Leave blank to not require one" />
+          <div style={{ fontSize: 11.5, color: form.deletePasswordHash ? 'var(--green)' : 'var(--text-3)', marginBottom: 6 }}>
+            {form.deletePasswordHash ? 'A password is currently set.' : 'No password set — deletion only asks for the voucher number.'}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="form-input" type="password" value={newDeletePassword}
+              onChange={e => setNewDeletePassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && setDeletePassword()}
+              placeholder={form.deletePasswordHash ? 'New password to change it' : 'Set a password'} />
+            <button className="btn btn-ghost btn-sm" onClick={setDeletePassword} disabled={!newDeletePassword.trim()}>Set</button>
+            {form.deletePasswordHash && <button className="btn btn-ghost btn-sm" onClick={clearDeletePassword}>Clear</button>}
+          </div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
             If set, deleting a voucher will ask for this password in addition to typing
-            the voucher number — an extra check against accidental deletion. This isn't
-            encrypted, so treat it as a speed bump rather than real security. Click "Save
-            Settings" above to apply changes here.
+            the voucher number — an extra check against accidental deletion. Stored as a
+            salted hash, not in plain text — saves immediately, no need to click "Save
+            Settings" below for this field.
           </div>
         </div>
 
@@ -372,8 +416,10 @@ export default function Settings({ userEmail }) {
           shares the exact same login and database access underneath — a restricted tab is
           hidden behind a read-only overlay in the app's interface, not blocked by the database
           itself. It stops accidental edits and keeps tabs organized by person; it won't stop
-          someone determined to get around it (e.g. via browser dev tools). Passwords here
-          aren't encrypted, same as the deletion password above.
+          someone determined to get around it (e.g. via browser dev tools). Passwords are
+          stored as a salted hash, not in plain text, but this app has no server to hash them
+          the extra-slow way real logins do — see the note in migrations/008_password_hashing.sql
+          for exactly what that does and doesn't mean.
         </div>
 
         {teamMembers.length === 0 && (
@@ -392,8 +438,11 @@ export default function Settings({ userEmail }) {
               />
               <input
                 className="form-input" type="password" style={{ maxWidth: 140 }}
-                value={m.password} onChange={e => updateMember(m.id, { password: e.target.value })}
-                placeholder="Password"
+                value={pendingMemberPasswords[m.id] || ''}
+                onChange={e => setPendingMemberPasswords(p => ({ ...p, [m.id]: e.target.value }))}
+                onBlur={() => setMemberPassword(m.id)}
+                onKeyDown={e => e.key === 'Enter' && setMemberPassword(m.id)}
+                placeholder={m.passwordHash ? 'Change password' : 'Set password'}
               />
               <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
                 <input type="checkbox" checked={!!m.isAdmin} onChange={e => updateMember(m.id, { isAdmin: e.target.checked })} />

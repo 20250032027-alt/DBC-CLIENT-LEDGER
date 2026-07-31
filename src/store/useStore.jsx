@@ -2,14 +2,16 @@ import { useState, useEffect, createContext, useContext, useCallback } from 'rea
 import { db } from '../lib/db'
 import { queueWrite, initSync, stopSync, onSyncStatusChange, pendingCount, syncNow } from '../lib/sync'
 import { DEFAULT_ACCOUNTS } from './defaultAccounts'
-import { nextVoucherNumber, nextBillNumber } from '../utils'
+import { nextVoucherNumber, nextBillNumber, generateSalt, hashSecret } from '../utils'
 
 const defaultSettings = {
   company: 'My Company',
   address: '',
   tin: '',
   logo: '',
-  deletePassword: '',
+  deletePassword: '', // legacy plaintext — no longer written to; auto-migrated to hash on load, see Settings.jsx
+  deletePasswordHash: '',
+  pwSalt: '',
   email: '',
   approved: false,
   currency: 'PHP',
@@ -19,8 +21,10 @@ const defaultSettings = {
   taxScheme: 'vat', // 'vat' | 'percentage'
   vatRate: 12,
   percentageTaxRate: 3,
-  // Team Members: [{ id, name, password, isAdmin, permissions: { [pageId]: true } }]
-  // See useTeam() in App.jsx for how this gets enforced. Empty array = the
+  // Team Members: [{ id, name, passwordHash, isAdmin, permissions: { [pageId]: true } }]
+  // Passwords are salted-SHA256-hashed (see hashSecret/verifySecret in
+  // utils.js), never stored in plain text. See canEdit logic in App.jsx
+  // for how this gets enforced. Empty array = the
   // feature is unused and nobody sees any change from today's behavior.
   teamMembers: [],
 }
@@ -120,6 +124,36 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
           ...(userEmail ? { email: userEmail } : {}),
         }
         await queueWrite('settings', 'insert', { userId, ...seedSettings }, { silent: true })
+      } else {
+        // One-time, automatic migration: hash any legacy plaintext
+        // deletePassword or team-member `password` field left over from
+        // before hashing was added, then remove the plaintext. Runs here
+        // (before any UI, including the team-member identification
+        // screen, ever reads a password) rather than only when someone
+        // happens to visit Settings — otherwise a not-yet-migrated
+        // password could get checked against the wrong thing. No-ops
+        // instantly once everything's already hashed.
+        const needsDeleteMigration = existingSettings.deletePassword && !existingSettings.deletePasswordHash
+        const membersNeedingMigration = (existingSettings.teamMembers || []).filter(m => m.password && !m.passwordHash)
+        if (needsDeleteMigration || membersNeedingMigration.length > 0) {
+          const salt = existingSettings.pwSalt || generateSalt()
+          const patch = { pwSalt: salt }
+          if (needsDeleteMigration) {
+            patch.deletePasswordHash = await hashSecret(existingSettings.deletePassword, salt)
+            patch.deletePassword = ''
+          }
+          if (membersNeedingMigration.length > 0) {
+            patch.teamMembers = await Promise.all((existingSettings.teamMembers || []).map(async m => {
+              if (m.password && !m.passwordHash) {
+                const passwordHash = await hashSecret(m.password, salt)
+                const { password, ...rest } = m
+                return { ...rest, passwordHash }
+              }
+              return m
+            }))
+          }
+          await queueWrite('settings', 'update', { ...existingSettings, ...patch }, { silent: true })
+        }
       }
 
       await refreshFromLocal()
@@ -262,6 +296,29 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     await refreshFromLocal()
   }
 
+  // "Use Starter Chart of Accounts" above only ever shows up when someone
+  // has zero accounts — so if the starter pack itself later gets a new
+  // account added to it (like Withholding Tax Receivable was), anyone who
+  // already ran the starter pack before that has no way to pick up the
+  // addition except adding it by hand. This adds just whatever starter
+  // accounts aren't already present by name, leaving everything else
+  // (including any accounts the user renamed, edited, or added
+  // themselves) completely untouched.
+  function missingStarterAccounts() {
+    const existingNames = new Set(accounts.map(a => (a.name || '').trim().toLowerCase()))
+    return DEFAULT_ACCOUNTS.filter(acc => !existingNames.has(acc.name.trim().toLowerCase()))
+  }
+
+  async function addMissingStarterAccounts() {
+    const missing = missingStarterAccounts()
+    for (const acc of missing) {
+      const id = crypto.randomUUID()
+      await queueWrite('accounts', 'insert', { id, userId, createdAt: new Date().toISOString(), ...acc })
+    }
+    await refreshFromLocal()
+    return missing.length
+  }
+
   // ---- Voucher Templates ----
   async function addTemplate(template) {
     const id = crypto.randomUUID()
@@ -301,6 +358,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       addVoucher, updateVoucher, deleteVoucher,
       addBill, updateBill, deleteBill,
       addAccount, updateAccount, deleteAccount, seedDefaultAccounts,
+      missingStarterAccounts, addMissingStarterAccounts,
       addTemplate, deleteTemplate,
       updateSettings, deleteAllData,
     }}>

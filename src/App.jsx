@@ -19,6 +19,7 @@ import TaxReturn from './pages/TaxReturn'
 import EWTReport from './pages/EWTReport'
 import Billing from './pages/Billing'
 import Settings from './pages/Settings'
+import HelpChatWidget from './components/HelpChatWidget.jsx'
 import {
   LayoutDashboard, Users, FileText, Scale, Waves,
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
@@ -26,6 +27,7 @@ import {
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
   FileBarChart, FileCheck, Percent,
 } from 'lucide-react'
+import { verifySecret } from './utils'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -261,8 +263,11 @@ function AppShell({ userEmail, bypassApprovalGate }) {
     setTeamError('')
   }
 
-  function confirmMember(member) {
-    if (teamPassword !== member.password) { setTeamError('Incorrect password.'); return }
+  async function confirmMember(member) {
+    if (!(await verifySecret(teamPassword, settings.pwSalt, member.passwordHash))) {
+      setTeamError('Incorrect password.')
+      return
+    }
     try { localStorage.setItem(TEAM_STORAGE_KEY, member.id) } catch { /* ignore */ }
     setActiveMemberId(member.id)
     setPendingMemberId(null)
@@ -473,6 +478,8 @@ function AppShell({ userEmail, bypassApprovalGate }) {
             <Page userEmail={userEmail} />
           </div>
         </main>
+
+        <HelpChatWidget page={page} activeMember={activeMember} />
       </div>
     </div>
   )

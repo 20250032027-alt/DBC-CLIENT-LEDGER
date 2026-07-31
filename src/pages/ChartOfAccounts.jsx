@@ -124,6 +124,7 @@ export default function ChartOfAccounts() {
   const {
     accounts, vouchers, settings,
     addAccount, updateAccount, deleteAccount, seedDefaultAccounts,
+    missingStarterAccounts, addMissingStarterAccounts,
   } = useStore()
   const cur = settings.currency
   const { theme } = useTheme()
@@ -132,6 +133,15 @@ export default function ChartOfAccounts() {
   const tickFill = theme === 'dark' ? '#64748b' : '#5b6478'
   const [modal, setModal] = useState(null)
   const [search, setSearch] = useState('')
+  const [addedMissingMsg, setAddedMissingMsg] = useState('')
+
+  const missing = missingStarterAccounts()
+
+  async function handleAddMissing() {
+    const count = await addMissingStarterAccounts()
+    setAddedMissingMsg(count > 0 ? `Added ${count} account${count !== 1 ? 's' : ''}.` : '')
+    setTimeout(() => setAddedMissingMsg(''), 3000)
+  }
 
   // Net debit/credit posted to each account name (case-insensitive),
   // gathered from every voucher entry across the whole ledger.
@@ -186,6 +196,26 @@ export default function ChartOfAccounts() {
           <Plus size={15} /> New Account
         </button>
       </div>
+
+      {accounts.length > 0 && missing.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+          fontSize: 12.5, color: 'var(--text-2)', background: 'var(--surface2)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          padding: '10px 14px', marginBottom: 16,
+        }}>
+          <span>
+            {missing.length} account{missing.length !== 1 ? 's' : ''} from the starter chart {missing.length !== 1 ? "aren't" : "isn't"} in
+            your list yet{missing.length === 1 ? ` (${missing[0].name})` : ''} — added since the starter pack was last updated.
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {addedMissingMsg && <span style={{ color: 'var(--green)' }}>{addedMissingMsg}</span>}
+            <button className="btn btn-ghost btn-sm" onClick={handleAddMissing}>
+              <Sparkles size={13} /> Add Missing Account{missing.length !== 1 ? 's' : ''}
+            </button>
+          </div>
+        </div>
+      )}
 
       {accounts.length === 0 ? (
         <div className="card">

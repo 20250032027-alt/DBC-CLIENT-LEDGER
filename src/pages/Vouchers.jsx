@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin } from '../utils'
+import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer } from 'lucide-react'
 
 const TYPES = ['sales', 'general', 'cash receipt', 'cash disbursement', 'expense', 'adjustment']
@@ -1348,14 +1348,14 @@ function DeleteVoucherModal({ voucher, settings, onClose, onConfirm }) {
   const [typed, setTyped] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const requiresPassword = !!(settings?.deletePassword)
+  const requiresPassword = !!(settings?.deletePasswordHash)
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (typed.trim() !== voucher.number) {
       setError(`Type the voucher number exactly as shown: ${voucher.number}`)
       return
     }
-    if (requiresPassword && password !== settings.deletePassword) {
+    if (requiresPassword && !(await verifySecret(password, settings.pwSalt, settings.deletePasswordHash))) {
       setError('Incorrect password.')
       return
     }
@@ -1420,11 +1420,11 @@ function DeleteVoucherModal({ voucher, settings, onClose, onConfirm }) {
 function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const requiresPassword = !!(settings?.deletePassword)
+  const requiresPassword = !!(settings?.deletePasswordHash)
   const entryCount = (voucher.entries || []).length
 
-  function handleConfirm() {
-    if (requiresPassword && password !== settings.deletePassword) {
+  async function handleConfirm() {
+    if (requiresPassword && !(await verifySecret(password, settings.pwSalt, settings.deletePasswordHash))) {
       setError('Incorrect password.')
       return
     }

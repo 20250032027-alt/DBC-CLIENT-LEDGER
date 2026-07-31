@@ -427,10 +427,17 @@ function BillModal({ bill, onClose, onSave, clients, bills, accounts, taxRate, t
     setForm(f => ({ ...f, clientId: id, clientName: c?.name || '' }))
   }
 
-  // Receivable accounts (asset type) and revenue accounts (revenue type)
+  // Receivable accounts (asset type) and revenue accounts (revenue type).
+  // Prefer an exact "Accounts Receivable" match first — now that the
+  // starter pack also has "Withholding Tax Receivable - At Source" (also
+  // an asset account with "receivable" in the name), a plain substring
+  // match could pick either one depending on account order. This used to
+  // happen to work only because 1100 sorts before 1360; matching the
+  // specific name first removes that fragility.
   const receivableAccounts = accounts.filter(a => a.type === 'asset')
   const revenueAccounts = accounts.filter(a => a.type === 'revenue')
-  const defaultAR = receivableAccounts.find(a => a.name.toLowerCase().includes('receivable'))
+  const defaultAR = receivableAccounts.find(a => a.name.trim().toLowerCase() === 'accounts receivable')
+    || receivableAccounts.find(a => a.name.toLowerCase().includes('receivable'))
   const defaultRev = revenueAccounts.find(a => a.name.toLowerCase().includes('service')) || revenueAccounts[0]
 
   // Outstanding invoices for selected client
