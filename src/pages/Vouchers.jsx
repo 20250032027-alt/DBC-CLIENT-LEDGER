@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret } from '../utils'
-import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer } from 'lucide-react'
+import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink } from 'lucide-react'
+import { showToast } from '../lib/toast'
 
 const TYPES = ['sales', 'general', 'cash receipt', 'cash disbursement', 'expense', 'adjustment']
 
@@ -1472,7 +1473,7 @@ function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
   )
 }
 
-function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, payeeIndex, settings }) {
+function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, payeeIndex, settings, uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment }) {
   const blankEntry = () => ({ account: '', description: '', debit: '', credit: '', id: crypto.randomUUID() })
   const [form, setForm] = useState(voucher ? { ...voucher, memo: voucher.memo || '' } : {
     type: 'general', date: new Date().toISOString().slice(0, 10),
@@ -1489,6 +1490,57 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
   const [showTemplates, setShowTemplates] = useState(false)
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [templateName, setTemplateName] = useState('')
+
+  // Attachments — only usable once the voucher has a real ID, i.e. it's
+  // already been saved at least once. A brand-new voucher doesn't get one
+  // until the store's insert returns it, so there's nowhere to upload to
+  // yet — see the note in the Attachments section below.
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [attachmentError, setAttachmentError] = useState('')
+
+  async function handleAttachmentPick(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow picking the same file again later
+    if (!file || !voucher?.id) return
+    setAttachmentError('')
+    setUploadingAttachment(true)
+    try {
+      const attachment = await uploadVoucherAttachment(voucher.id, file)
+      setForm(f => ({ ...f, attachments: [...(f.attachments || []), attachment] }))
+    } catch (err) {
+      setAttachmentError(err.message?.includes('exceeded the maximum allowed size')
+        ? 'That file is too large — 10MB max per attachment.'
+        : 'Could not upload — check your connection and try again.')
+      console.error('attachment upload error:', err)
+    } finally {
+      setUploadingAttachment(false)
+    }
+  }
+
+  async function handleAttachmentView(attachment) {
+    try {
+      const url = await getVoucherAttachmentUrl(attachment.path)
+      window.open(url, '_blank', 'noopener')
+    } catch (err) {
+      showToast('Could not open that file — check your connection and try again.', 'error')
+    }
+  }
+
+  async function handleAttachmentDelete(attachment) {
+    if (!confirm(`Remove "${attachment.name}"? This can't be undone.`)) return
+    try {
+      await deleteVoucherAttachment(voucher.id, attachment.id)
+      setForm(f => ({ ...f, attachments: (f.attachments || []).filter(a => a.id !== attachment.id) }))
+    } catch (err) {
+      showToast('Could not remove that file — check your connection and try again.', 'error')
+    }
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
 
   function setF(k, v) { setForm(f => ({ ...f, [k]: v })) }
   function setEntry(i, e) {
@@ -1638,6 +1690,54 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
               payeeIndex={payeeIndex}
               placeholder="Name of person or entity being paid / received from"
             />
+          </div>
+
+          <div className="form-group form-col-full">
+            <label className="form-label">
+              Attachments <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(receipts, PDFs or photos — optional)</span>
+            </label>
+
+            {!voucher?.id ? (
+              <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 0' }}>
+                Save this voucher first, then reopen it to attach receipts or other documents.
+              </div>
+            ) : (
+              <>
+                {(form.attachments || []).length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                    {form.attachments.map(a => (
+                      <div key={a.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5,
+                        padding: '6px 10px', background: 'var(--surface2)', borderRadius: 'var(--radius-sm)',
+                      }}>
+                        <FileText size={14} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                        <span style={{ color: 'var(--text-3)', fontSize: 11, flexShrink: 0 }}>{formatFileSize(a.size)}</span>
+                        <button type="button" className="icon-btn" title="View" onClick={() => handleAttachmentView(a)}>
+                          <ExternalLink size={13} />
+                        </button>
+                        <button type="button" className="icon-btn" title="Remove" style={{ color: 'var(--red)' }} onClick={() => handleAttachmentDelete(a)}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <label className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', cursor: uploadingAttachment ? 'default' : 'pointer', opacity: uploadingAttachment ? 0.6 : 1 }}>
+                  {uploadingAttachment ? <Loader2 size={14} className="spin" /> : <Paperclip size={14} />}
+                  {uploadingAttachment ? 'Uploading…' : 'Attach a Document'}
+                  <input
+                    type="file" accept=".pdf,image/jpeg,image/png,image/webp"
+                    style={{ display: 'none' }} disabled={uploadingAttachment}
+                    onChange={handleAttachmentPick}
+                  />
+                </label>
+                {attachmentError && (
+                  <div style={{ fontSize: 11.5, color: 'var(--red)', marginTop: 6 }}>{attachmentError}</div>
+                )}
+              </>
+            )}
           </div>
           {(form.type === 'cash receipt' || form.type === 'cash disbursement') && (
             <>
@@ -1869,7 +1969,10 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
 }
 
 export default function Vouchers() {
-  const { vouchers, addVoucher, updateVoucher, deleteVoucher, clients, accounts, templates, addTemplate, deleteTemplate, settings } = useStore()
+  const {
+    vouchers, addVoucher, updateVoucher, deleteVoucher, clients, accounts, templates, addTemplate, deleteTemplate, settings,
+    uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment,
+  } = useStore()
   const [modal, setModal] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [postTarget, setPostTarget] = useState(null)
@@ -2100,6 +2203,9 @@ export default function Vouchers() {
           settings={settings}
           recentMemos={recentMemos}
           payeeIndex={payeeIndex}
+          uploadVoucherAttachment={uploadVoucherAttachment}
+          getVoucherAttachmentUrl={getVoucherAttachmentUrl}
+          deleteVoucherAttachment={deleteVoucherAttachment}
           onSaveTemplate={addTemplate}
           onDeleteTemplate={deleteTemplate}
           onClose={() => setModal(null)}

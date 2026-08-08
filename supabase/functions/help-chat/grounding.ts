@@ -43,6 +43,13 @@ the one concept almost every question eventually comes back to.
   TIN and address automatically from the most recent voucher that used that
   name
 - A memo field also autocompletes from recently used memos
+- Documents (receipts, PDFs, or photos — JPG/PNG/WEBP, 10MB max each) can
+  be attached to a voucher. This only works once the voucher has been
+  saved at least once — on a brand-new voucher, save it first, then reopen
+  it and the Attachments section becomes available. Attaching requires an
+  actual internet connection at the time (unlike the rest of the app,
+  which works offline and syncs later) — a file upload can't be queued the
+  lightweight way a small edit can.
 
 ## Draft vs. Posted
 - New vouchers start as **Draft** — they exist but don't count in any

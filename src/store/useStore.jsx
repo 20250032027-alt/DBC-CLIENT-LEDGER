@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext, useCallback } from 'react'
 import { db } from '../lib/db'
+import { supabase } from '../lib/supabase'
 import { queueWrite, initSync, stopSync, onSyncStatusChange, pendingCount, syncNow } from '../lib/sync'
 import { DEFAULT_ACCOUNTS } from './defaultAccounts'
 import { nextVoucherNumber, nextBillNumber, generateSalt, hashSecret } from '../utils'
@@ -220,6 +221,55 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     await refreshFromLocal()
   }
 
+  // ---- Voucher attachments (receipts, etc.) ----
+  // Unlike everything else in this store, these talk to Supabase Storage
+  // directly rather than going through the offline queue — a file upload
+  // isn't a small JSON write that can wait quietly in IndexedDB until
+  // reconnection, it needs a real connection right now. If the user is
+  // offline, these will simply fail with a clear error rather than
+  // pretending to queue something that can't actually be queued this way.
+  const ATTACHMENTS_BUCKET = 'voucher-attachments'
+
+  async function uploadVoucherAttachment(voucherId, file) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+    const path = `${userId}/${voucherId}/${Date.now()}-${safeName}`
+    const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).upload(path, file)
+    if (error) throw error
+
+    const attachment = {
+      id: crypto.randomUUID(),
+      name: file.name,
+      path,
+      size: file.size,
+      uploadedAt: new Date().toISOString(),
+    }
+    const existing = await db.vouchers.get(voucherId)
+    const attachments = [...(existing?.attachments || []), attachment]
+    await updateVoucher(voucherId, { attachments })
+    return attachment
+  }
+
+  async function getVoucherAttachmentUrl(path) {
+    // Signed URL, not a public one — the bucket is private, matching every
+    // other table's owner-only access. Expires in an hour; if someone
+    // holds the tab open longer than that and clicks again, a fresh one
+    // gets generated, no different from any other "view" action.
+    const { data, error } = await supabase.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(path, 3600)
+    if (error) throw error
+    return data.signedUrl
+  }
+
+  async function deleteVoucherAttachment(voucherId, attachmentId) {
+    const existing = await db.vouchers.get(voucherId)
+    if (!existing) return
+    const target = (existing.attachments || []).find(a => a.id === attachmentId)
+    if (!target) return
+    const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove([target.path])
+    if (error) throw error
+    const attachments = (existing.attachments || []).filter(a => a.id !== attachmentId)
+    await updateVoucher(voucherId, { attachments })
+  }
+
   // ---- Bills ----
   function coaName(preferred, fallback, accountList) {
     const match = accountList.find(a => a.name.trim().toLowerCase() === preferred.toLowerCase())
@@ -361,6 +411,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       refresh,
       addClient, updateClient, deleteClient,
       addVoucher, updateVoucher, deleteVoucher,
+      uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment,
       addBill, updateBill, deleteBill,
       addAccount, updateAccount, deleteAccount, seedDefaultAccounts,
       missingStarterAccounts, addMissingStarterAccounts,
