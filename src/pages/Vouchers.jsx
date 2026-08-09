@@ -1526,6 +1526,51 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
     }
   }
 
+  // Deliberately doesn't just rely on the browser's own PDF viewer having
+  // a print button — that's inconsistent across browsers, and images have
+  // no such button at all most of the time. This opens a dedicated window
+  // with the file filling the page and triggers the print dialog directly,
+  // the same "open a window, write content, call print()" pattern already
+  // used for Form 2307/EWT/SAWT elsewhere in this file — just with an
+  // embedded file instead of an HTML template this time.
+  async function handleAttachmentPrint(attachment) {
+    try {
+      const url = await getVoucherAttachmentUrl(attachment.path)
+      const isPdf = attachment.name.toLowerCase().endsWith('.pdf')
+      const w = window.open('', '_blank', 'width=900,height=750')
+      if (!w) { showToast('Please allow pop-ups to print attachments.', 'error'); return }
+
+      w.document.write(`<!DOCTYPE html>
+<html>
+<head><title>${attachment.name}</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  iframe { width: 100%; height: 100%; border: none; }
+  img { max-width: 100%; max-height: 100vh; display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+  ${isPdf
+    ? `<iframe src="${url}"></iframe>`
+    : `<img src="${url}" onload="window.focus(); window.print();" />`}
+</body>
+</html>`)
+      w.document.close()
+
+      if (isPdf) {
+        // The image case triggers print via its own onload attribute above
+        // (fires once the image itself has loaded). A PDF inside an
+        // iframe needs the window's own load event instead, which only
+        // fires once the iframe has finished loading the PDF — setting
+        // this now is safe since that load is still an async fetch that
+        // hasn't started yet at this point in the synchronous code above.
+        w.onload = () => { w.focus(); w.print() }
+      }
+    } catch (err) {
+      showToast('Could not open that file for printing — check your connection and try again.', 'error')
+    }
+  }
+
   async function handleAttachmentDelete(attachment) {
     if (!confirm(`Remove "${attachment.name}"? This can't be undone.`)) return
     try {
@@ -1715,6 +1760,9 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
                         <span style={{ color: 'var(--text-3)', fontSize: 11, flexShrink: 0 }}>{formatFileSize(a.size)}</span>
                         <button type="button" className="icon-btn" title="View" onClick={() => handleAttachmentView(a)}>
                           <ExternalLink size={13} />
+                        </button>
+                        <button type="button" className="icon-btn" title="Print" onClick={() => handleAttachmentPrint(a)}>
+                          <Printer size={13} />
                         </button>
                         <button type="button" className="icon-btn" title="Remove" style={{ color: 'var(--red)' }} onClick={() => handleAttachmentDelete(a)}>
                           <Trash2 size={13} />
