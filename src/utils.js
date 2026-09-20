@@ -199,6 +199,12 @@ export function nextBillNumber(date, existingBills) {
   return `INV ${year}-${String(count + 1).padStart(3, '0')}`
 }
 
+export function nextPosSaleNumber(date, existingSales) {
+  const year = (date || new Date().toISOString()).slice(0, 4)
+  const count = existingSales.filter(s => (s.number || '').includes(` ${year}-`)).length
+  return `POS ${year}-${String(count + 1).padStart(3, '0')}`
+}
+
 // ── Password hashing for the deletion password and Team Member passwords ──
 // Uses the browser's built-in Web Crypto API (SubtleCrypto) — no external
 // dependency needed. Salted SHA-256, not bcrypt/Argon2: this app has no
