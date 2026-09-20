@@ -33,6 +33,20 @@ db.version(2).stores({
   outbox: '++seq, table, recordId, ts, userId',
 })
 
+// v3: Point of Sale — menu items and completed sales. Same shape as every
+// other synced table (id, userId, updatedAt, _dirty) so they get the same
+// offline-first behavior for free, without any POS-specific sync code.
+db.version(3).stores({
+  menuItems: 'id, userId, updatedAt, _dirty',
+  posSales: 'id, userId, updatedAt, _dirty',
+})
+
+// v4: Raw Materials tracking, ported from t2g-inventory.
+db.version(4).stores({
+  rawMaterials: 'id, userId, updatedAt, _dirty',
+  rawMaterialEntries: 'id, userId, updatedAt, _dirty',
+})
+
 export async function clearLocalDb() {
   await Promise.all(db.tables.map(t => t.clear()))
 }

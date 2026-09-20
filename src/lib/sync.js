@@ -11,6 +11,10 @@ const TABLES = {
   bills: { remote: 'bills', pk: 'id', toDb: toBillDb },
   templates: { remote: 'voucher_templates', pk: 'id', toDb },
   settings: { remote: 'settings', pk: 'userId', toDb },
+  menuItems: { remote: 'menu_items', pk: 'id', toDb },
+  posSales: { remote: 'pos_sales', pk: 'id', toDb },
+  rawMaterials: { remote: 'raw_materials', pk: 'id', toDb },
+  rawMaterialEntries: { remote: 'raw_material_entries', pk: 'id', toDb },
 }
 
 let syncing = false

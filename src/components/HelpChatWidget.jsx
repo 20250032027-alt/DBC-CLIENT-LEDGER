@@ -101,6 +101,7 @@ const TEAM_PAGES = [
   { id: 'tax-return', label: 'Tax Return' },
   { id: 'ewt-report', label: 'EWT Report' },
   { id: 'billing', label: 'Billing' },
+  { id: 'raw-materials', label: 'Raw Materials' },
   { id: 'settings', label: 'Settings' },
 ]
 

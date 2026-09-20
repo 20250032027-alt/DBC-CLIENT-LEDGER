@@ -18,6 +18,7 @@ import TaxReport from './pages/TaxReport'
 import TaxReturn from './pages/TaxReturn'
 import EWTReport from './pages/EWTReport'
 import Billing from './pages/Billing'
+import RawMaterials from './pages/RawMaterials'
 import Settings from './pages/Settings'
 import HelpChatWidget from './components/HelpChatWidget.jsx'
 import {
@@ -25,7 +26,7 @@ import {
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
-  FileBarChart, FileCheck, Percent,
+  FileBarChart, FileCheck, Percent, Package,
 } from 'lucide-react'
 import { verifySecret } from './utils'
 
@@ -42,19 +43,22 @@ const NAV = [
   { id: 'tax-return', label: 'Tax Return', icon: FileCheck },
   { id: 'ewt-report', label: 'EWT Report', icon: Percent },
   { id: 'billing', label: 'Billing', icon: Receipt },
+  { id: 'raw-materials', label: 'Raw Materials', icon: Package },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ]
 
 const PAGE_TITLES = {
   dashboard: 'Dashboard', clients: 'Clients', vouchers: 'Vouchers',
   accounts: 'Chart of Accounts', 'trial-balance': 'Trial Balance', 'account-listing': 'Account Listing', 'cash-flow': 'Cash Flow',
-  financial: 'Financial Reports', 'tax-report': 'Tax Report', 'tax-return': 'Tax Return', 'ewt-report': 'EWT Report', billing: 'Billing', settings: 'Settings',
+  financial: 'Financial Reports', 'tax-report': 'Tax Report', 'tax-return': 'Tax Return', 'ewt-report': 'EWT Report', billing: 'Billing',
+  'raw-materials': 'Raw Materials', settings: 'Settings',
 }
 
 const PAGES = {
   dashboard: Dashboard, clients: Clients, vouchers: Vouchers,
   accounts: ChartOfAccounts, 'trial-balance': TrialBalance, 'account-listing': AccountListing, 'cash-flow': CashFlow,
-  financial: FinancialCondition, 'tax-report': TaxReport, 'tax-return': TaxReturn, 'ewt-report': EWTReport, billing: Billing, settings: Settings,
+  financial: FinancialCondition, 'tax-report': TaxReport, 'tax-return': TaxReturn, 'ewt-report': EWTReport, billing: Billing,
+  'raw-materials': RawMaterials, settings: Settings,
 }
 
 function ToastHost() {

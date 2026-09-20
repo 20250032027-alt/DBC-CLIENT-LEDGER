@@ -3,7 +3,7 @@ import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { queueWrite, initSync, stopSync, onSyncStatusChange, pendingCount, syncNow } from '../lib/sync'
 import { DEFAULT_ACCOUNTS } from './defaultAccounts'
-import { nextVoucherNumber, nextBillNumber, generateSalt, hashSecret } from '../utils'
+import { nextVoucherNumber, nextBillNumber, nextPosSaleNumber, generateSalt, hashSecret } from '../utils'
 
 const defaultSettings = {
   company: 'My Company',
@@ -52,6 +52,10 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   const [bills, setBills] = useState([])
   const [accounts, setAccounts] = useState([])
   const [templates, setTemplates] = useState([])
+  const [menuItems, setMenuItems] = useState([])
+  const [posSales, setPosSales] = useState([])
+  const [rawMaterials, setRawMaterials] = useState([])
+  const [rawMaterialEntries, setRawMaterialEntries] = useState([])
   const [settings, setSettings] = useState(defaultSettings)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -60,9 +64,11 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   const [conflicts, setConflicts] = useState([])
 
   const refreshFromLocal = useCallback(async () => {
-    const [accData, cliData, vouData, billData, tplData, setRow, conflictRows] = await Promise.all([
+    const [accData, cliData, vouData, billData, tplData, menuData, saleData, rmData, rmeData, setRow, conflictRows] = await Promise.all([
       liveRows('accounts'), liveRows('clients'), liveRows('vouchers'),
       liveRows('bills'), liveRows('templates'),
+      liveRows('menuItems'), liveRows('posSales'),
+      liveRows('rawMaterials'), liveRows('rawMaterialEntries'),
       userId ? db.settings.get(userId) : null,
       db.conflicts.orderBy('ts').reverse().limit(20).toArray(),
     ])
@@ -71,6 +77,10 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     setVouchers(vouData)
     setBills(billData)
     setTemplates(tplData)
+    setMenuItems(menuData)
+    setPosSales(saleData)
+    setRawMaterials(rmData)
+    setRawMaterialEntries(rmeData)
     if (setRow) setSettings({ ...defaultSettings, ...setRow })
     setConflicts(conflictRows)
     setPending(await pendingCount())
@@ -325,6 +335,118 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     await refreshFromLocal()
   }
 
+  // ---- Point of Sale ----
+  async function addMenuItem(item) {
+    const id = crypto.randomUUID()
+    const rec = { id, userId, createdAt: new Date().toISOString(), active: true, ...item }
+    await queueWrite('menuItems', 'insert', rec)
+    await refreshFromLocal()
+    return id
+  }
+  async function updateMenuItem(id, patch) {
+    const existing = await db.menuItems.get(id)
+    if (!existing) { fail(null, 'Could not update menu item'); return }
+    await queueWrite('menuItems', 'update', { ...existing, ...patch, id })
+    await refreshFromLocal()
+  }
+  async function deleteMenuItem(id) {
+    await queueWrite('menuItems', 'delete', { id })
+    await refreshFromLocal()
+  }
+
+  // Rings up a sale: saves the POS-specific record (what was ordered, how
+  // it was paid) AND auto-posts the matching accounting voucher in the
+  // same call — same reasoning as addBill above, just immediate-payment
+  // instead of invoice-then-collect. Dr Cash for the full total; Cr Sales
+  // Revenue for the subtotal; Cr VAT Payable for the tax portion, only if
+  // there's actually tax to record (a Percentage-Tax business or a
+  // non-taxed sale wouldn't have this line).
+  async function addPosSale(sale) {
+    const id = crypto.randomUUID()
+    const date = sale.date || new Date().toISOString().slice(0, 10)
+    const number = nextPosSaleNumber(date, posSales)
+
+    const cashAccount = coaName(sale.paymentMethod === 'card' ? 'Cash' : 'Cash', null, accounts)
+    const revAccount = coaName('Sales Revenue', 'Service Revenue', accounts)
+    const vatAccount = coaName('VAT Payable', null, accounts)
+
+    const entries = [
+      { account: cashAccount, description: `POS sale ${number}`, debit: sale.total, credit: 0 },
+      { account: revAccount, description: `POS sale ${number}`, debit: 0, credit: sale.subtotal },
+    ]
+    if (sale.tax > 0 && vatAccount) {
+      entries.push({ account: vatAccount, description: `VAT on POS sale ${number}`, debit: 0, credit: sale.tax })
+    }
+
+    await insertVoucherRecord({
+      type: 'sales',
+      number: nextVoucherNumber('sales', date, vouchers),
+      date,
+      memo: `POS sale ${number}`,
+      reference: number,
+      entries,
+    }, { silent: true })
+
+    const rec = {
+      id, userId, createdAt: new Date().toISOString(), number, date,
+      items: sale.items, subtotal: sale.subtotal, tax: sale.tax, total: sale.total,
+      paymentMethod: sale.paymentMethod || 'cash',
+      reference: number, // the voucher was posted with reference = this same number, so this ties back to it
+    }
+    await queueWrite('posSales', 'insert', rec)
+    await refreshFromLocal()
+    return id
+  }
+
+  // ---- Raw Materials ----
+  // Current stock isn't stored as a running total anywhere — it's always
+  // computed fresh as opening_stock + the sum of every entry, the same
+  // way the original app did it. That avoids a stored total ever quietly
+  // drifting out of sync with the entries that are supposed to explain it.
+  async function addRawMaterial(material) {
+    const id = crypto.randomUUID()
+    const rec = { id, userId, createdAt: new Date().toISOString(), unit: 'kg', openingStock: 0, ...material }
+    await queueWrite('rawMaterials', 'insert', rec)
+    await refreshFromLocal()
+    return id
+  }
+  async function updateRawMaterial(id, patch) {
+    const existing = await db.rawMaterials.get(id)
+    if (!existing) { fail(null, 'Could not update raw material'); return }
+    await queueWrite('rawMaterials', 'update', { ...existing, ...patch, id })
+    await refreshFromLocal()
+  }
+  async function deleteRawMaterial(id) {
+    // Mirrors the original app's warning: this also orphans any entries
+    // and assembly recipe lines pointing at this material. The app
+    // doesn't cascade-delete those automatically (same as before) — they
+    // just stop resolving to a real material.
+    await queueWrite('rawMaterials', 'delete', { id })
+    await refreshFromLocal()
+  }
+
+  async function addRawMaterialEntry(entry) {
+    const id = crypto.randomUUID()
+    const rec = {
+      id, userId, createdAt: new Date().toISOString(),
+      entryType: 'intake', date: new Date().toISOString().slice(0, 10),
+      ...entry,
+    }
+    await queueWrite('rawMaterialEntries', 'insert', rec)
+    await refreshFromLocal()
+    return id
+  }
+  async function updateRawMaterialEntry(id, patch) {
+    const existing = await db.rawMaterialEntries.get(id)
+    if (!existing) { fail(null, 'Could not update entry'); return }
+    await queueWrite('rawMaterialEntries', 'update', { ...existing, ...patch, id })
+    await refreshFromLocal()
+  }
+  async function deleteRawMaterialEntry(id) {
+    await queueWrite('rawMaterialEntries', 'delete', { id })
+    await refreshFromLocal()
+  }
+
   // ---- Accounts (Chart of Accounts) ----
   async function addAccount(account) {
     const id = crypto.randomUUID()
@@ -406,6 +528,8 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   return (
     <StoreContext.Provider value={{
       clients, vouchers, bills, accounts, templates, settings, loading, error,
+      menuItems, posSales,
+      rawMaterials, rawMaterialEntries,
       syncStatus, pending, conflicts, clearConflicts,
       clearError: () => setError(null),
       refresh,
@@ -416,6 +540,9 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       addAccount, updateAccount, deleteAccount, seedDefaultAccounts,
       missingStarterAccounts, addMissingStarterAccounts,
       addTemplate, deleteTemplate,
+      addMenuItem, updateMenuItem, deleteMenuItem, addPosSale,
+      addRawMaterial, updateRawMaterial, deleteRawMaterial,
+      addRawMaterialEntry, updateRawMaterialEntry, deleteRawMaterialEntry,
       updateSettings, deleteAllData,
     }}>
       {children}
