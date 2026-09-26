@@ -23,6 +23,9 @@ const TEAM_PAGES = [
   { id: 'ewt-report', label: 'EWT Report' },
   { id: 'billing', label: 'Billing' },
   { id: 'raw-materials', label: 'Raw Materials' },
+  { id: 'assembly', label: 'Product Assembly' },
+  { id: 'production', label: 'Production' },
+  { id: 'sales', label: 'Sales' },
   { id: 'settings', label: 'Settings' },
 ]
 

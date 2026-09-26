@@ -160,6 +160,47 @@ or the first revenue account if none matches) — these can be changed per
 invoice. Invoice status is Unpaid, Paid, or Overdue. Marking an invoice
 paid asks which cash/bank account received the payment.
 
+# Inventory & Production (Raw Materials, Product Assembly, Production, Sales)
+
+Four pages for a product/manufacturing-based business, separate from —
+and this business doesn't need to use — Billing above (Billing stays
+available for plain service invoicing; these four are for a business that
+makes and sells physical goods).
+
+## Raw Materials
+The catalog of raw materials (name, unit, cost, opening stock) plus every
+stock movement against them. Current stock is always opening stock plus
+the sum of every movement — never a separately stored number. Movement
+types: **Intake** (manual, logged directly here), **Consumption**
+(automatic, created by Production, shown read-only "via Production"),
+and **Adjustment** (manual correction, positive or negative, password-
+gated using the same deletion password as Settings > Data).
+
+## Product Assembly
+Two tabs. **Products** — the catalog of finished goods (name, unit,
+price, opening stock — same "opening stock plus movements" idea as raw
+materials). **Recipes** — the bill of materials for each product: how
+much of each raw material it takes to make one unit. Saving a recipe
+replaces the whole ingredient list for that product at once.
+
+## Production
+Log a production batch (product + quantity), and its recipe's raw
+materials are consumed automatically — this is what creates the
+"Consumption" entries seen on Raw Materials. Warns (but doesn't block) if
+a batch would take a raw material below zero. Also has a password-gated
+Adjustment entry for manual finished-goods corrections. Deleting a
+production entry also reverses the raw material it consumed.
+
+## Sales
+Multi-line invoices — client, date, channel, payment type (Cash or
+Credit), and one or more products with quantity and an optional amount
+override (otherwise revenue is quantity × the product's price). Editing
+or deleting an invoice is password-gated. Creating an invoice
+auto-posts a voucher (Dr Cash for Cash, Dr Accounts Receivable for
+Credit; Cr Sales Revenue) — same "auto-posts to the books" pattern as
+Billing. Sales does not itself reduce Product stock — only Production
+adds to it in this app; there's no automatic stock deduction on a sale.
+
 # Settings
 
 - **Company Details** — company name, address, TIN, logo

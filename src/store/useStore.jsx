@@ -56,6 +56,11 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   const [posSales, setPosSales] = useState([])
   const [rawMaterials, setRawMaterials] = useState([])
   const [rawMaterialEntries, setRawMaterialEntries] = useState([])
+  const [products, setProducts] = useState([])
+  const [assemblyItems, setAssemblyItems] = useState([])
+  const [productionEntries, setProductionEntries] = useState([])
+  const [invoices, setInvoices] = useState([])
+  const [invoiceItems, setInvoiceItems] = useState([])
   const [settings, setSettings] = useState(defaultSettings)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -64,11 +69,14 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   const [conflicts, setConflicts] = useState([])
 
   const refreshFromLocal = useCallback(async () => {
-    const [accData, cliData, vouData, billData, tplData, menuData, saleData, rmData, rmeData, setRow, conflictRows] = await Promise.all([
+    const [accData, cliData, vouData, billData, tplData, menuData, saleData, rmData, rmeData, prodData, asmData, peData, invData, iiData, setRow, conflictRows] = await Promise.all([
       liveRows('accounts'), liveRows('clients'), liveRows('vouchers'),
       liveRows('bills'), liveRows('templates'),
       liveRows('menuItems'), liveRows('posSales'),
       liveRows('rawMaterials'), liveRows('rawMaterialEntries'),
+      liveRows('products'), liveRows('assemblyItems'),
+      liveRows('productionEntries'),
+      liveRows('invoices'), liveRows('invoiceItems'),
       userId ? db.settings.get(userId) : null,
       db.conflicts.orderBy('ts').reverse().limit(20).toArray(),
     ])
@@ -81,6 +89,11 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     setPosSales(saleData)
     setRawMaterials(rmData)
     setRawMaterialEntries(rmeData)
+    setProducts(prodData)
+    setAssemblyItems(asmData)
+    setProductionEntries(peData)
+    setInvoices(invData)
+    setInvoiceItems(iiData)
     if (setRow) setSettings({ ...defaultSettings, ...setRow })
     setConflicts(conflictRows)
     setPending(await pendingCount())
@@ -447,6 +460,184 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     await refreshFromLocal()
   }
 
+  // ---- Products ----
+  async function addProduct(product) {
+    const id = crypto.randomUUID()
+    const rec = { id, userId, createdAt: new Date().toISOString(), unit: 'pc', openingStock: 0, ...product }
+    await queueWrite('products', 'insert', rec)
+    await refreshFromLocal()
+    return id
+  }
+  async function updateProduct(id, patch) {
+    const existing = await db.products.get(id)
+    if (!existing) { fail(null, 'Could not update product'); return }
+    await queueWrite('products', 'update', { ...existing, ...patch, id })
+    await refreshFromLocal()
+  }
+  async function deleteProduct(id) {
+    // Same as the original app: doesn't cascade-clean assembly recipe
+    // rows pointing at this product — they just stop resolving to a real
+    // product, same tradeoff as deleting a raw material.
+    await queueWrite('products', 'delete', { id })
+    await refreshFromLocal()
+  }
+
+  // ---- Assembly (bill of materials) ----
+  // Saving a recipe REPLACES the full set of ingredient rows for that
+  // product — delete everything currently on file for it, then insert
+  // the new set in one go. Matches the original app's approach: simpler
+  // and less error-prone than trying to diff and patch individual rows.
+  async function saveAssemblyRecipe(productId, rows) {
+    const existing = assemblyItems.filter(a => a.productId === productId)
+    for (const row of existing) {
+      await queueWrite('assemblyItems', 'delete', { id: row.id })
+    }
+    for (const row of rows) {
+      const id = crypto.randomUUID()
+      await queueWrite('assemblyItems', 'insert', {
+        id, userId, createdAt: new Date().toISOString(),
+        productId, rawMaterialId: row.rawMaterialId, quantityPerUnit: row.quantityPerUnit,
+      })
+    }
+    await refreshFromLocal()
+  }
+
+  // ---- Production ----
+  // Logging a production batch auto-consumes the product's recipe by
+  // inserting negative raw_material_entries rows (entry_type =
+  // 'consumption'), tagged with productionEntryId so they can be found
+  // again for edits/deletes. Adjustment entries (is_adjustment: true)
+  // skip this entirely — a manual finished-goods correction doesn't
+  // consume any raw material.
+  async function consumeRawMaterialsForProduction(productionEntryId, productId, quantity, date) {
+    const recipe = assemblyItems.filter(a => a.productId === productId)
+    for (const r of recipe) {
+      await queueWrite('rawMaterialEntries', 'insert', {
+        id: crypto.randomUUID(), userId, createdAt: new Date().toISOString(),
+        rawMaterialId: r.rawMaterialId,
+        quantity: -(Number(r.quantityPerUnit) * Number(quantity)),
+        date, batchNotes: 'Auto-consumed for production batch',
+        entryType: 'consumption', productionEntryId,
+      })
+    }
+  }
+
+  async function removeConsumptionEntriesFor(productionEntryId) {
+    const toRemove = rawMaterialEntries.filter(e => e.productionEntryId === productionEntryId && e.entryType === 'consumption')
+    for (const e of toRemove) {
+      await queueWrite('rawMaterialEntries', 'delete', { id: e.id })
+    }
+  }
+
+  async function addProductionEntry(entry) {
+    const id = crypto.randomUUID()
+    const rec = {
+      id, userId, createdAt: new Date().toISOString(),
+      isAdjustment: false, batchNotes: null,
+      ...entry,
+    }
+    await queueWrite('productionEntries', 'insert', rec)
+    if (!rec.isAdjustment) {
+      await consumeRawMaterialsForProduction(id, rec.productId, rec.quantity, rec.date)
+    }
+    await refreshFromLocal()
+    return id
+  }
+  async function updateProductionEntry(id, patch) {
+    const existing = await db.productionEntries.get(id)
+    if (!existing) { fail(null, 'Could not update production entry'); return }
+    const updated = { ...existing, ...patch, id }
+    await queueWrite('productionEntries', 'update', updated)
+    if (!updated.isAdjustment) {
+      // Recipe or quantity may have changed — clear the old consumption
+      // entries this run created and recompute from scratch, same as the
+      // original app.
+      await removeConsumptionEntriesFor(id)
+      await consumeRawMaterialsForProduction(id, updated.productId, updated.quantity, updated.date)
+    }
+    await refreshFromLocal()
+  }
+  async function deleteProductionEntry(id) {
+    // Fixed from the original app: also clean up the raw material this
+    // batch consumed, not just the production_entries row — otherwise
+    // stock stays permanently reduced for a batch that no longer exists.
+    await removeConsumptionEntriesFor(id)
+    await queueWrite('productionEntries', 'delete', { id })
+    await refreshFromLocal()
+  }
+
+  // ---- Sales (invoices) ----
+  // Only Cash and Credit exist as payment types here — the original
+  // app's third type, 'Consign', drives a whole separate FIFO settlement
+  // system (Countering) that isn't ported. DBC-specific addition: unlike
+  // the original app (which never touched accounting at all), creating an
+  // invoice here auto-posts a matching voucher — Dr Cash for Cash, Dr
+  // Accounts Receivable for Credit; Cr Sales Revenue for the total —
+  // same "auto-post on create only" reasoning addBill already uses,
+  // not on every subsequent edit.
+  async function addSalesInvoice(invoice, items) {
+    const id = crypto.randomUUID()
+    const date = invoice.date || new Date().toISOString().slice(0, 10)
+    const total = items.reduce((s, it) => s + Number(it.amount || 0), 0)
+
+    let reference = null
+    if (total > 0) {
+      const cashAccount = coaName('Cash', null, accounts)
+      const arAccount = coaName('Accounts Receivable', null, accounts)
+      const revAccount = coaName('Sales Revenue', 'Service Revenue', accounts)
+      const debitAccount = invoice.paymentType === 'Credit' ? (arAccount || cashAccount) : cashAccount
+      const number = nextVoucherNumber('sales', date, vouchers)
+      reference = number
+      await insertVoucherRecord({
+        type: 'sales',
+        number,
+        date,
+        memo: `Sales invoice${invoice.referenceNo ? ` ${invoice.referenceNo}` : ''}${invoice.client ? ` — ${invoice.client}` : ''}`,
+        reference: number,
+        entries: [
+          { account: debitAccount, description: 'Sales invoice', debit: total, credit: 0 },
+          { account: revAccount, description: 'Sales invoice', debit: 0, credit: total },
+        ],
+      }, { silent: true })
+    }
+
+    const invRec = { id, userId, createdAt: new Date().toISOString(), reference, ...invoice, date }
+    await queueWrite('invoices', 'insert', invRec)
+    for (const item of items) {
+      await queueWrite('invoiceItems', 'insert', {
+        id: crypto.randomUUID(), userId, createdAt: new Date().toISOString(),
+        invoiceId: id, productId: item.productId, quantity: item.quantity, amount: item.amount ?? null,
+      })
+    }
+    await refreshFromLocal()
+    return id
+  }
+
+  async function updateSalesInvoice(id, patch, items) {
+    const existing = await db.invoices.get(id)
+    if (!existing) { fail(null, 'Could not update invoice'); return }
+    await queueWrite('invoices', 'update', { ...existing, ...patch, id })
+
+    if (items) {
+      const oldItems = invoiceItems.filter(it => it.invoiceId === id)
+      for (const it of oldItems) await queueWrite('invoiceItems', 'delete', { id: it.id })
+      for (const item of items) {
+        await queueWrite('invoiceItems', 'insert', {
+          id: crypto.randomUUID(), userId, createdAt: new Date().toISOString(),
+          invoiceId: id, productId: item.productId, quantity: item.quantity, amount: item.amount ?? null,
+        })
+      }
+    }
+    await refreshFromLocal()
+  }
+
+  async function deleteSalesInvoice(id) {
+    const items = invoiceItems.filter(it => it.invoiceId === id)
+    for (const it of items) await queueWrite('invoiceItems', 'delete', { id: it.id })
+    await queueWrite('invoices', 'delete', { id })
+    await refreshFromLocal()
+  }
+
   // ---- Accounts (Chart of Accounts) ----
   async function addAccount(account) {
     const id = crypto.randomUUID()
@@ -530,6 +721,9 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       clients, vouchers, bills, accounts, templates, settings, loading, error,
       menuItems, posSales,
       rawMaterials, rawMaterialEntries,
+      products, assemblyItems,
+      productionEntries,
+      invoices, invoiceItems,
       syncStatus, pending, conflicts, clearConflicts,
       clearError: () => setError(null),
       refresh,
@@ -543,6 +737,9 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       addMenuItem, updateMenuItem, deleteMenuItem, addPosSale,
       addRawMaterial, updateRawMaterial, deleteRawMaterial,
       addRawMaterialEntry, updateRawMaterialEntry, deleteRawMaterialEntry,
+      addProduct, updateProduct, deleteProduct, saveAssemblyRecipe,
+      addProductionEntry, updateProductionEntry, deleteProductionEntry,
+      addSalesInvoice, updateSalesInvoice, deleteSalesInvoice,
       updateSettings, deleteAllData,
     }}>
       {children}

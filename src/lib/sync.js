@@ -15,6 +15,11 @@ const TABLES = {
   posSales: { remote: 'pos_sales', pk: 'id', toDb },
   rawMaterials: { remote: 'raw_materials', pk: 'id', toDb },
   rawMaterialEntries: { remote: 'raw_material_entries', pk: 'id', toDb },
+  products: { remote: 'products', pk: 'id', toDb },
+  assemblyItems: { remote: 'assembly_items', pk: 'id', toDb },
+  productionEntries: { remote: 'production_entries', pk: 'id', toDb },
+  invoices: { remote: 'invoices', pk: 'id', toDb },
+  invoiceItems: { remote: 'invoice_items', pk: 'id', toDb },
 }
 
 let syncing = false

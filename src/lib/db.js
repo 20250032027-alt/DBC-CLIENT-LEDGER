@@ -47,6 +47,23 @@ db.version(4).stores({
   rawMaterialEntries: 'id, userId, updatedAt, _dirty',
 })
 
+// v5: Products catalog + Assembly recipes (bill of materials).
+db.version(5).stores({
+  products: 'id, userId, updatedAt, _dirty',
+  assemblyItems: 'id, userId, updatedAt, _dirty',
+})
+
+// v6: Production entries.
+db.version(6).stores({
+  productionEntries: 'id, userId, updatedAt, _dirty',
+})
+
+// v7: Sales invoices, ported from t2g-inventory.
+db.version(7).stores({
+  invoices: 'id, userId, updatedAt, _dirty',
+  invoiceItems: 'id, userId, updatedAt, _dirty',
+})
+
 export async function clearLocalDb() {
   await Promise.all(db.tables.map(t => t.clear()))
 }

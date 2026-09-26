@@ -19,6 +19,9 @@ import TaxReturn from './pages/TaxReturn'
 import EWTReport from './pages/EWTReport'
 import Billing from './pages/Billing'
 import RawMaterials from './pages/RawMaterials'
+import Assembly from './pages/Assembly'
+import Production from './pages/Production'
+import Sales from './pages/Sales'
 import Settings from './pages/Settings'
 import HelpChatWidget from './components/HelpChatWidget.jsx'
 import {
@@ -26,7 +29,7 @@ import {
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
-  FileBarChart, FileCheck, Percent, Package,
+  FileBarChart, FileCheck, Percent, Package, Layers, Factory, ShoppingCart,
 } from 'lucide-react'
 import { verifySecret } from './utils'
 
@@ -44,6 +47,9 @@ const NAV = [
   { id: 'ewt-report', label: 'EWT Report', icon: Percent },
   { id: 'billing', label: 'Billing', icon: Receipt },
   { id: 'raw-materials', label: 'Raw Materials', icon: Package },
+  { id: 'assembly', label: 'Product Assembly', icon: Layers },
+  { id: 'production', label: 'Production', icon: Factory },
+  { id: 'sales', label: 'Sales', icon: ShoppingCart },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ]
 
@@ -51,14 +57,14 @@ const PAGE_TITLES = {
   dashboard: 'Dashboard', clients: 'Clients', vouchers: 'Vouchers',
   accounts: 'Chart of Accounts', 'trial-balance': 'Trial Balance', 'account-listing': 'Account Listing', 'cash-flow': 'Cash Flow',
   financial: 'Financial Reports', 'tax-report': 'Tax Report', 'tax-return': 'Tax Return', 'ewt-report': 'EWT Report', billing: 'Billing',
-  'raw-materials': 'Raw Materials', settings: 'Settings',
+  'raw-materials': 'Raw Materials', assembly: 'Product Assembly', production: 'Production', sales: 'Sales', settings: 'Settings',
 }
 
 const PAGES = {
   dashboard: Dashboard, clients: Clients, vouchers: Vouchers,
   accounts: ChartOfAccounts, 'trial-balance': TrialBalance, 'account-listing': AccountListing, 'cash-flow': CashFlow,
   financial: FinancialCondition, 'tax-report': TaxReport, 'tax-return': TaxReturn, 'ewt-report': EWTReport, billing: Billing,
-  'raw-materials': RawMaterials, settings: Settings,
+  'raw-materials': RawMaterials, assembly: Assembly, production: Production, sales: Sales, settings: Settings,
 }
 
 function ToastHost() {
