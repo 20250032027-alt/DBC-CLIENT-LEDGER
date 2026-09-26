@@ -379,7 +379,11 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     const date = sale.date || new Date().toISOString().slice(0, 10)
     const number = nextPosSaleNumber(date, posSales)
 
-    const cashAccount = coaName(sale.paymentMethod === 'card' ? 'Cash' : 'Cash', null, accounts)
+    // Card payments post to the same Cash account as cash payments for
+    // now — a reasonable simplification for a small business, but if a
+    // separate bank/card clearing account is ever wanted, this is the
+    // one line to change.
+    const cashAccount = coaName('Cash', null, accounts)
     const revAccount = coaName('Sales Revenue', 'Service Revenue', accounts)
     const vatAccount = coaName('VAT Payable', null, accounts)
 

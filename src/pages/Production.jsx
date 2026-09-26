@@ -163,14 +163,25 @@ export default function Production() {
   function productUnit(id) { return products.find(p => p.id === id)?.unit || '' }
 
   // Warn, don't block, if this run would take any raw material negative —
-  // same behavior as the original app.
-  function confirmStockIfShort(productId, quantity) {
+  // same behavior as the original app. When editing an existing entry
+  // (excludeEntryId set), rawStock still reflects THIS entry's own old
+  // consumption — without correcting for that, reducing a batch's
+  // quantity could incorrectly show a false shortage warning, since the
+  // check would be comparing against a balance already reduced by the
+  // very entry being edited.
+  function confirmStockIfShort(productId, quantity, excludeEntryId) {
     const recipe = assemblyItems.filter(a => a.productId === productId)
     if (recipe.length === 0) return true
     const shortages = []
     recipe.forEach(r => {
       const need = Number(r.quantityPerUnit) * Number(quantity)
-      const have = rawStock[r.rawMaterialId] ?? 0
+      let have = rawStock[r.rawMaterialId] ?? 0
+      if (excludeEntryId) {
+        const oldConsumed = rawMaterialEntries
+          .filter(e => e.productionEntryId === excludeEntryId && e.rawMaterialId === r.rawMaterialId)
+          .reduce((s, e) => s + Number(e.quantity), 0) // negative — consumption is stored as negative quantity
+        have -= oldConsumed // subtracting a negative adds it back
+      }
       if (need > have) {
         const mat = rawMaterials.find(m => m.id === r.rawMaterialId)
         shortages.push(`${mat?.name || 'Material'}: need ${need.toLocaleString()} ${mat?.unit || ''}, have ${have.toLocaleString()} ${mat?.unit || ''}`)
@@ -181,7 +192,8 @@ export default function Production() {
   }
 
   function handleFormSave(form) {
-    if (!confirmStockIfShort(form.productId, form.quantity)) return
+    const excludeEntryId = formModal !== 'new' ? formModal.id : null
+    if (!confirmStockIfShort(form.productId, form.quantity, excludeEntryId)) return
     if (formModal === 'new') addProductionEntry(form)
     else updateProductionEntry(formModal.id, form)
     setFormModal(null)
