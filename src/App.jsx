@@ -2,6 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { format } from 'date-fns'
 import { supabase, isSupabaseConfigured } from './lib/supabase'
 import { ThemeProvider, useTheme } from './lib/theme.jsx'
+import { TutorialProvider, useTutorial, SEGMENTS } from './lib/tutorial.jsx'
+import TutorialNudge from './components/TutorialNudge.jsx'
+import TutorialMenu from './components/TutorialMenu.jsx'
+import TutorialSpotlight from './components/TutorialSpotlight.jsx'
+import TutorialSandboxVoucher from './components/TutorialSandboxVoucher.jsx'
 import { getInstallState, promptInstall } from './lib/installPrompt'
 import { StoreProvider, useStore } from './store/useStore.jsx'
 import { onToast, showToast } from './lib/toast'
@@ -291,6 +296,26 @@ function AppShell({ userEmail, bypassApprovalGate }) {
 
   function navigate(id) { setPage(id); setSidebarOpen(false) }
 
+  // Tutorial: skip segments about a page this Team Member can't actually
+  // edit (offering to "practice recording a transaction" to someone with
+  // no Vouchers access would just point them at something they can't do
+  // for real either). Never shown at all while the admin is using Manage
+  // Ledger — bypassApprovalGate means this session isn't really "someone
+  // learning their own account."
+  const tutorial = useTutorial()
+  const visibleSegmentIds = SEGMENTS
+    .filter(seg => {
+      if (!seg.requiresPage) return true
+      return bypassApprovalGate || !activeMember || activeMember.isAdmin ||
+        !!(activeMember.permissions && activeMember.permissions[seg.requiresPage])
+    })
+    .map(seg => seg.id)
+
+  useEffect(() => {
+    if (!bypassApprovalGate) tutorial.maybeNudge()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   if (loading) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)' }}>
@@ -383,28 +408,28 @@ function AppShell({ userEmail, bypassApprovalGate }) {
           </button>
         </div>
 
-        <nav className="sidebar-nav">
+        <nav className="sidebar-nav" data-tutorial="sidebar-nav">
           <div className="nav-section-label">Main</div>
           {NAV.slice(0, 2).map(({ id, label, icon: Icon }) => (
-            <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}>
+            <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} data-tutorial={`nav-${id}`}>
               <Icon size={16} /><span>{label}</span>
             </div>
           ))}
           <div className="nav-section-label">Accounting</div>
           {NAV.slice(2, 8).map(({ id, label, icon: Icon }) => (
-            <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}>
+            <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} data-tutorial={`nav-${id}`}>
               <Icon size={16} /><span>{label}</span>
             </div>
           ))}
           <div className="nav-section-label">Finance</div>
           {NAV.slice(8, 9).map(({ id, label, icon: Icon }) => (
-            <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}>
+            <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} data-tutorial={`nav-${id}`}>
               <Icon size={16} /><span>{label}</span>
             </div>
           ))}
           <div className="nav-section-label">System</div>
           {NAV.slice(9).map(({ id, label, icon: Icon }) => (
-            <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}>
+            <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} data-tutorial={`nav-${id}`}>
               <Icon size={16} /><span>{label}</span>
             </div>
           ))}
@@ -501,6 +526,15 @@ function AppShell({ userEmail, bypassApprovalGate }) {
         </main>
 
         <HelpChatWidget page={page} activeMember={activeMember} />
+
+        {!bypassApprovalGate && (
+          <>
+            <TutorialNudge />
+            <TutorialMenu visibleSegmentIds={visibleSegmentIds} />
+            <TutorialSpotlight />
+            <TutorialSandboxVoucher />
+          </>
+        )}
       </div>
     </div>
   )
@@ -726,7 +760,9 @@ function AppInner() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppInner />
+      <TutorialProvider>
+        <AppInner />
+      </TutorialProvider>
     </ThemeProvider>
   )
 }

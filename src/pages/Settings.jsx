@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase'
 import { getInstallState, promptInstall } from '../lib/installPrompt'
 import { clearLocalDb } from '../lib/db'
 import { stopSync } from '../lib/sync'
-import { Save, LogOut, Cloud, Smartphone, X, RotateCcw, Plus, Trash2, Shield, Sun, Moon, Palette, AlertTriangle, Check, Contrast, PanelLeft, PanelLeftClose } from 'lucide-react'
+import { Save, LogOut, Cloud, Smartphone, X, RotateCcw, Plus, Trash2, Shield, Sun, Moon, Palette, AlertTriangle, Check, Contrast, PanelLeft, PanelLeftClose, GraduationCap } from 'lucide-react'
 import { formatTin, normalizeTin, generateSalt, hashSecret, verifySecret } from '../utils'
 import { useTheme, ACCENT_PRESETS } from '../lib/theme.jsx'
+import { useTutorial } from '../lib/tutorial.jsx'
 import { isValidHex, checkAccentAccessibility, pickReadableTextColor } from '../lib/colorUtils'
 
 // Mirrors App.jsx's NAV ids/labels for the per-tab permission checkboxes
@@ -65,6 +66,7 @@ export default function Settings({ userEmail }) {
     accentPreset, setAccentPreset, customAccent, setCustomAccent,
     sidebarCollapsed, setSidebarCollapsed, density, setDensity,
   } = useTheme()
+  const { openMenu: openTutorialMenu } = useTutorial()
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -447,6 +449,19 @@ export default function Settings({ userEmail }) {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title" style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <GraduationCap size={16} /> Tutorial
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.6 }}>
+          A quick, hands-on walkthrough — pick any part, in any order. Nothing in it ever touches
+          your real data.
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={openTutorialMenu}>
+          Open Tutorial
+        </button>
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>

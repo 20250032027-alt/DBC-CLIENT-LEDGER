@@ -203,6 +203,7 @@ export default function HelpChatWidget({ page, activeMember }) {
         onClick={() => setOpen(o => !o)}
         title="Help"
         className="help-chat-fab"
+        data-tutorial="help-chat-fab"
         style={{
           position: 'fixed', bottom: 20, right: 20, zIndex: 1000,
           width: 52, height: 52, borderRadius: '50%', border: 'none',
