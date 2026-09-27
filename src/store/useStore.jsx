@@ -379,6 +379,20 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     const date = sale.date || new Date().toISOString().slice(0, 10)
     const number = nextPosSaleNumber(date, posSales)
 
+    // The sale record is written BEFORE the voucher, deliberately — if
+    // something interrupts this function partway through (the tab
+    // closing, a crash), the worse of the two possible half-finished
+    // states is an accounting voucher sitting in the books with no sale
+    // record to explain it. A sale record that simply hasn't posted to
+    // the books yet is the safer, more recoverable failure to land on.
+    const rec = {
+      id, userId, createdAt: new Date().toISOString(), number, date,
+      items: sale.items, subtotal: sale.subtotal, tax: sale.tax, total: sale.total,
+      paymentMethod: sale.paymentMethod || 'cash',
+      reference: number, // set below once the voucher actually exists — see reference note
+    }
+    await queueWrite('posSales', 'insert', rec)
+
     // Card payments post to the same Cash account as cash payments for
     // now — a reasonable simplification for a small business, but if a
     // separate bank/card clearing account is ever wanted, this is the
@@ -404,13 +418,6 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       entries,
     }, { silent: true })
 
-    const rec = {
-      id, userId, createdAt: new Date().toISOString(), number, date,
-      items: sale.items, subtotal: sale.subtotal, tax: sale.tax, total: sale.total,
-      paymentMethod: sale.paymentMethod || 'cash',
-      reference: number, // the voucher was posted with reference = this same number, so this ties back to it
-    }
-    await queueWrite('posSales', 'insert', rec)
     await refreshFromLocal()
     return id
   }
@@ -584,14 +591,25 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     const date = invoice.date || new Date().toISOString().slice(0, 10)
     const total = items.reduce((s, it) => s + Number(it.amount || 0), 0)
 
-    let reference = null
+    // Invoice and line items are written BEFORE the voucher, deliberately
+    // — same reasoning as addPosSale: if this function gets interrupted
+    // partway through, a not-yet-posted invoice is a far safer thing to
+    // be left with than an accounting voucher with no invoice behind it.
+    const invRec = { id, userId, createdAt: new Date().toISOString(), reference: null, ...invoice, date }
+    await queueWrite('invoices', 'insert', invRec)
+    for (const item of items) {
+      await queueWrite('invoiceItems', 'insert', {
+        id: crypto.randomUUID(), userId, createdAt: new Date().toISOString(),
+        invoiceId: id, productId: item.productId, quantity: item.quantity, amount: item.amount ?? null,
+      })
+    }
+
     if (total > 0) {
       const cashAccount = coaName('Cash', null, accounts)
       const arAccount = coaName('Accounts Receivable', null, accounts)
       const revAccount = coaName('Sales Revenue', 'Service Revenue', accounts)
       const debitAccount = invoice.paymentType === 'Credit' ? (arAccount || cashAccount) : cashAccount
       const number = nextVoucherNumber('sales', date, vouchers)
-      reference = number
       await insertVoucherRecord({
         type: 'sales',
         number,
@@ -603,16 +621,12 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
           { account: revAccount, description: 'Sales invoice', debit: 0, credit: total },
         ],
       }, { silent: true })
+      // Link the invoice back to its voucher now that the voucher
+      // actually exists — a second small update rather than something
+      // the very first insert depended on succeeding.
+      await queueWrite('invoices', 'update', { ...invRec, reference: number })
     }
 
-    const invRec = { id, userId, createdAt: new Date().toISOString(), reference, ...invoice, date }
-    await queueWrite('invoices', 'insert', invRec)
-    for (const item of items) {
-      await queueWrite('invoiceItems', 'insert', {
-        id: crypto.randomUUID(), userId, createdAt: new Date().toISOString(),
-        invoiceId: id, productId: item.productId, quantity: item.quantity, amount: item.amount ?? null,
-      })
-    }
     await refreshFromLocal()
     return id
   }
