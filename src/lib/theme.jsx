@@ -7,16 +7,14 @@ const CONTRAST_KEY = 'dbc-ledger-contrast' // 'normal' | 'high'
 const ACCENT_PRESET_KEY = 'dbc-ledger-accent-preset' // 'blue' | 'green' | 'amber' | 'purple' | 'custom'
 const CUSTOM_ACCENT_KEY = 'dbc-ledger-custom-accent' // hex string
 const SIDEBAR_KEY = 'dbc-ledger-sidebar' // 'expanded' | 'collapsed'
+const DENSITY_KEY = 'dbc-ledger-density' // 'compact' | 'standard' | 'comfortable'
 
 // Every preset is just one base hex — deriveAccentShades() computes the
 // full coordinated set (dim/hover/glow/subtle/text) from it, the exact
 // same path a custom color goes through. A preset isn't a shortcut that
 // skips the safety math; it's just a pre-picked base color.
 export const ACCENT_PRESETS = {
-  blue:   { label: 'Slate Blue',   hex: '#4f72f5' },
-  green:  { label: 'Forest Green', hex: '#15803d' },
-  amber:  { label: 'Warm Amber',   hex: '#b45309' },
-  purple: { label: 'Muted Purple', hex: '#7c3aed' },
+  blue: { label: 'Slate Blue', hex: '#4f72f5' },
 }
 
 function readStored(key, fallback) {
@@ -35,13 +33,17 @@ const PreferencesContext = createContext(null)
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(() => readStored(THEME_KEY, 'light') === 'dark' ? 'dark' : 'light')
   const [darkVariant, setDarkVariantState] = useState(() => readStored(DARK_VARIANT_KEY, 'standard') === 'true-black' ? 'true-black' : 'standard')
-  const [contrast, setContrastState] = useState(() => readStored(CONTRAST_KEY, 'normal') === 'high' ? 'high' : 'normal')
+  const [contrast, setContrastState] = useState(() => readStored(CONTRAST_KEY, 'high') === 'normal' ? 'normal' : 'high')
   const [accentPreset, setAccentPresetState] = useState(() => {
     const v = readStored(ACCENT_PRESET_KEY, 'blue')
     return (v === 'custom' || ACCENT_PRESETS[v]) ? v : 'blue'
   })
   const [customAccent, setCustomAccentState] = useState(() => readStored(CUSTOM_ACCENT_KEY, '#4f72f5'))
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(() => readStored(SIDEBAR_KEY, 'expanded') === 'collapsed')
+  const [density, setDensityState] = useState(() => {
+    const v = readStored(DENSITY_KEY, 'standard')
+    return (v === 'compact' || v === 'comfortable') ? v : 'standard'
+  })
 
   // Apply theme/variant/contrast as data-attributes — same mechanism the
   // existing light/dark switch already used, just with two more
@@ -50,7 +52,8 @@ export function ThemeProvider({ children }) {
     document.documentElement.setAttribute('data-theme', theme)
     document.documentElement.setAttribute('data-dark-variant', theme === 'dark' ? darkVariant : 'standard')
     document.documentElement.setAttribute('data-contrast', contrast)
-  }, [theme, darkVariant, contrast])
+    document.documentElement.setAttribute('data-density', density)
+  }, [theme, darkVariant, contrast, density])
 
   // Apply the accent color by setting CSS custom properties directly —
   // inline-set custom properties on :root override both the base :root
@@ -76,6 +79,7 @@ export function ThemeProvider({ children }) {
   function setCustomAccent(hex) { setCustomAccentState(hex); writeStored(CUSTOM_ACCENT_KEY, hex) }
   function setSidebarCollapsed(v) { setSidebarCollapsedState(v); writeStored(SIDEBAR_KEY, v ? 'collapsed' : 'expanded') }
   function toggleSidebarCollapsed() { setSidebarCollapsed(!sidebarCollapsed) }
+  function setDensity(d) { setDensityState(d); writeStored(DENSITY_KEY, d) }
 
   const value = useMemo(() => ({
     theme, toggle, setTheme,
@@ -85,7 +89,8 @@ export function ThemeProvider({ children }) {
     customAccent, setCustomAccent,
     accentHex,
     sidebarCollapsed, setSidebarCollapsed, toggleSidebarCollapsed,
-  }), [theme, darkVariant, contrast, accentPreset, customAccent, accentHex, sidebarCollapsed])
+    density, setDensity,
+  }), [theme, darkVariant, contrast, accentPreset, customAccent, accentHex, sidebarCollapsed, density])
 
   return (
     <PreferencesContext.Provider value={value}>

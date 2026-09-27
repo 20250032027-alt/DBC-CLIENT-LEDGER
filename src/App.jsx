@@ -365,17 +365,19 @@ function AppShell({ userEmail, bypassApprovalGate }) {
       <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="sidebar-logo">
+        <div className="sidebar-logo" style={sidebarCollapsed ? { flexDirection: 'column', gap: 8 } : undefined}>
           <div className="sidebar-logo-mark"><BookOpen size={16} color="var(--accent-text)" /></div>
-          <div>
-            <div className="sidebar-logo-text">DBC Ledger</div>
-            <div className="sidebar-logo-sub">Accounting</div>
-          </div>
+          {!sidebarCollapsed && (
+            <div>
+              <div className="sidebar-logo-text">DBC Ledger</div>
+              <div className="sidebar-logo-sub">Accounting</div>
+            </div>
+          )}
           <button
             className="icon-btn sidebar-collapse-toggle"
             onClick={toggleSidebarCollapsed}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            style={{ marginLeft: 'auto' }}
+            style={sidebarCollapsed ? undefined : { marginLeft: 'auto' }}
           >
             {sidebarCollapsed ? <PanelLeft size={15} /> : <PanelLeftClose size={15} />}
           </button>

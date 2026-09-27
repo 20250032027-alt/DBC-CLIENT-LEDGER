@@ -63,6 +63,59 @@
   --shadow-sm:  0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05);
   --shadow:     0 4px 16px rgba(16,24,40,0.07), 0 1px 4px rgba(16,24,40,0.05);
   --shadow-lg:  0 16px 48px rgba(16,24,40,0.14);
+
+  /* Density — "standard" values here match the app's original, unmodified
+     sizing exactly, so anyone who never touches this setting sees zero
+     visual change. Applied to the shared structural classes used
+     everywhere (buttons, inputs, cards, tables, nav, page padding) — the
+     handful of classes nearly every page is actually built from, not
+     every individual inline style on every page. See the note in
+     Settings' Appearance section for what this does and doesn't reach. */
+  --density-root-font: 16px;
+  --density-page-p:    28px 32px 48px;
+  --density-card-p:    20px 22px;
+  --density-card-gap:  18px;
+  --density-btn-p:     7px 14px;
+  --density-btn-font:  13px;
+  --density-input-p:   8px 11px;
+  --density-input-font: 13px;
+  --density-table-font: 13px;
+  --density-th-p:      10px 14px;
+  --density-td-p:      11px 14px;
+  --density-nav-p:     8px 10px;
+  --density-nav-font:  13px;
+}
+
+[data-density="compact"] {
+  --density-root-font: 15px;
+  --density-page-p:    16px 18px 32px;
+  --density-card-p:    13px 15px;
+  --density-card-gap:  10px;
+  --density-btn-p:     5px 11px;
+  --density-btn-font:  12px;
+  --density-input-p:   5px 9px;
+  --density-input-font: 12px;
+  --density-table-font: 12px;
+  --density-th-p:      6px 10px;
+  --density-td-p:      6px 10px;
+  --density-nav-p:     5px 9px;
+  --density-nav-font:  12px;
+}
+
+[data-density="comfortable"] {
+  --density-root-font: 18px;
+  --density-page-p:    32px 36px 52px;
+  --density-card-p:    26px 28px;
+  --density-card-gap:  24px;
+  --density-btn-p:     11px 20px;
+  --density-btn-font:  15px;
+  --density-input-p:   12px 15px;
+  --density-input-font: 15px;
+  --density-table-font: 15px;
+  --density-th-p:      14px 16px;
+  --density-td-p:      15px 16px;
+  --density-nav-p:     12px 14px;
+  --density-nav-font:  14.5px;
 }
 
 /* ── Dark theme override — same blue accent, dark navy surfaces ────── */
@@ -130,7 +183,7 @@
 
 /* ── Reset ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html { font-size: var(--density-root-font); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 body {
   font-family: var(--sans);
@@ -240,11 +293,11 @@ body {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 10px;
+  padding: var(--density-nav-p);
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--density-nav-font);
   font-weight: 500;
   transition: all 0.12s ease;
   border: 1px solid transparent;
@@ -329,7 +382,7 @@ body {
 
 /* ── Page content ───────────────────────────────────────────── */
 .page-content {
-  padding: 28px 32px 48px;
+  padding: var(--density-page-p);
   max-width: 1380px;
   width: 100%;
   margin: 0 auto;
@@ -370,7 +423,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 20px 22px;
+  padding: var(--density-card-p);
   box-shadow: var(--shadow-sm);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -379,7 +432,7 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: var(--density-card-gap);
 }
 
 .card-title {
@@ -462,9 +515,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
+  padding: var(--density-btn-p);
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--density-btn-font);
   font-weight: 500;
   font-family: var(--sans);
   cursor: pointer;
@@ -557,8 +610,8 @@ body {
   border: 1px solid var(--border2);
   color: var(--text-1);
   border-radius: var(--radius-sm);
-  padding: 8px 11px;
-  font-size: 13px;
+  padding: var(--density-input-p);
+  font-size: var(--density-input-font);
   font-family: var(--sans);
   width: 100%;
   outline: none;
@@ -593,11 +646,11 @@ body {
   background: var(--surface);
 }
 
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: var(--density-table-font); }
 
 thead th {
   text-align: left;
-  padding: 10px 14px;
+  padding: var(--density-th-p);
   background: var(--surface2);
   color: var(--text-3);
   font-size: 10.5px;
@@ -616,7 +669,7 @@ tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: var(--surface2); }
 
 tbody td {
-  padding: 11px 14px;
+  padding: var(--density-td-p);
   color: var(--text-1);
   vertical-align: middle;
 }

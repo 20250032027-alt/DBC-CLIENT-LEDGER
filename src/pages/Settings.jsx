@@ -63,7 +63,7 @@ export default function Settings({ userEmail }) {
   const {
     theme, setTheme, darkVariant, setDarkVariant, contrast, setContrast,
     accentPreset, setAccentPreset, customAccent, setCustomAccent,
-    sidebarCollapsed, setSidebarCollapsed,
+    sidebarCollapsed, setSidebarCollapsed, density, setDensity,
   } = useTheme()
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
@@ -320,6 +320,32 @@ export default function Settings({ userEmail }) {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Density */}
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Density</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 8, lineHeight: 1.5 }}>
+              Compact fits more on screen — good for speed once you know your way around.
+              Comfortable gives everything more room to breathe — bigger text, more spacing,
+              easier to read at a glance.
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {[
+                { key: 'compact', label: 'Compact' },
+                { key: 'standard', label: 'Standard' },
+                { key: 'comfortable', label: 'Comfortable' },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  className="btn btn-ghost btn-sm"
+                  style={{ background: density === opt.key ? 'var(--accent-glow)' : undefined, borderColor: density === opt.key ? 'var(--accent)' : undefined }}
+                  onClick={() => setDensity(opt.key)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* High contrast */}
