@@ -32,6 +32,27 @@ export default function TutorialSandboxVoucher() {
 
   if (mode !== 'playing' || currentStep?.type !== 'sandbox-voucher') return null
 
+  if (accounts.length === 0) {
+    return (
+      <div className="modal-backdrop">
+        <div className="modal" style={{ maxWidth: 440 }}>
+          <div className="modal-header">
+            <span className="modal-title" style={{ fontSize: 18 }}>Almost ready</span>
+            <button className="icon-btn" onClick={closeTutorial}><X size={18} /></button>
+          </div>
+          <div style={{ fontSize: 15, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 4 }}>
+            This practice form uses your real Chart of Accounts to pick from — but it looks like
+            there aren't any set up yet. Head to Chart of Accounts first, then come back here to
+            try this.
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-primary" onClick={closeTutorial} style={{ width: '100%' }}>Got it</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   function updateLine(i, field, value) {
     setLines(ls => ls.map((l, idx) => idx === i ? { ...l, [field]: value } : l))
   }

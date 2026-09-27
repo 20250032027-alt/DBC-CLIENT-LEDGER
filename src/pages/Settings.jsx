@@ -67,6 +67,7 @@ export default function Settings({ userEmail }) {
     sidebarCollapsed, setSidebarCollapsed, density, setDensity,
   } = useTheme()
   const { openMenu: openTutorialMenu } = useTutorial()
+  const [search, setSearch] = useState('')
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -207,6 +208,28 @@ export default function Settings({ userEmail }) {
     persistTeam(teamMembers.filter(m => m.id !== id))
   }
 
+  // Search keywords per section — deliberately includes things someone
+  // might type even if they don't know the exact section name (e.g.
+  // "password" should find Data, since that's where the deletion
+  // password lives, not just literally match the word "Data").
+  const SECTION_KEYWORDS = {
+    company: 'company details business name address tin logo currency',
+    tax: 'tax scheme bir vat percentage registration rate',
+    team: 'team members permissions password pin access',
+    appearance: 'appearance theme dark light color accent contrast density sidebar collapse',
+    tutorial: 'tutorial help walkthrough guide learn onboarding',
+    helpAssistant: 'help assistant ai chat chatbot data numbers',
+    account: 'account sign out email',
+    install: 'install app pwa home screen',
+    data: 'data delete password reset export backup danger',
+  }
+  const query = search.trim().toLowerCase()
+  function show(sectionId) {
+    if (!query) return true
+    return SECTION_KEYWORDS[sectionId].includes(query)
+  }
+  const anyVisible = Object.keys(SECTION_KEYWORDS).some(show)
+
   return (
     <div className="page-content" style={{ maxWidth: 600 }}>
       <div className="page-header">
@@ -216,6 +239,19 @@ export default function Settings({ userEmail }) {
         </div>
       </div>
 
+      <div className="form-group" style={{ marginBottom: 16 }}>
+        <input
+          className="form-input" value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search settings..."
+        />
+      </div>
+      {query && !anyVisible && (
+        <div style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', padding: '20px 0' }}>
+          Nothing matches "{search}".
+        </div>
+      )}
+
+      {show('company') && (
       <div className="card">
         <div className="card-header">
           <div className="card-title">Company Details</div>
@@ -272,7 +308,152 @@ export default function Settings({ userEmail }) {
           </div>
         </div>
       </div>
+      )}
 
+      {show('tax') && (
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-header">
+          <div className="card-title">Tax Scheme (BIR)</div>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>
+          A business is registered with the BIR as either VAT or Non-VAT (Percentage Tax) —
+          this is set here at the company level and applies to every Sales voucher. It isn't
+          something you switch per transaction.
+        </div>
+        <div className="form-grid">
+          <div className="form-group form-col-full">
+            <label className="form-label">Registration Type</label>
+            <select className="form-select" value={form.taxScheme || 'vat'} onChange={e => setF('taxScheme', e.target.value)}>
+              <option value="vat">VAT-registered</option>
+              <option value="percentage">Non-VAT — Percentage Tax</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">VAT Rate (%)</label>
+            <input className="form-input" type="number" min="0" max="100" step="0.5"
+              disabled={form.taxScheme === 'percentage'}
+              value={form.vatRate} onChange={e => setF('vatRate', parseFloat(e.target.value))} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Percentage Tax Rate (%)</label>
+            <input className="form-input" type="number" min="0" max="100" step="0.5"
+              disabled={form.taxScheme === 'vat'}
+              value={form.percentageTaxRate} onChange={e => setF('percentageTaxRate', parseFloat(e.target.value))} />
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+          Whichever isn't active is kept here so switching registration types later doesn't lose the rate.
+        </div>
+
+        <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="btn btn-primary" onClick={save}>
+            <Save size={14} />
+            {saved ? 'Saved!' : 'Save Settings'}
+          </button>
+        </div>
+      </div>
+      )}
+
+      {show('team') && (
+      <div className="card">
+        <div className="card-title" style={{ marginBottom: 4 }}>Team Members</div>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+          Let more than one person use this login and still get their own view. Once you add
+          anyone here, the app will ask "Who's using this?" on every device — so add yourself
+          too, with Admin checked, or you could lock yourself out of tabs.
+        </div>
+
+        <div style={{
+          fontSize: 11.5, color: 'var(--text-3)', background: 'var(--surface2)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          padding: '10px 12px', marginBottom: 16, lineHeight: 1.6,
+        }}>
+          Important: this is a convenience layer, not real per-user security. Everyone still
+          shares the exact same login and database access underneath — a restricted tab is
+          hidden behind a read-only overlay in the app's interface, not blocked by the database
+          itself. It stops accidental edits and keeps tabs organized by person; it won't stop
+          someone determined to get around it (e.g. via browser dev tools). Passwords are
+          stored as a salted hash, not in plain text, but this app has no server to hash them
+          the extra-slow way real logins do — see the note in migrations/008_password_hashing.sql
+          for exactly what that does and doesn't mean.
+        </div>
+
+        {teamMembers.length === 0 && (
+          <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 14 }}>No team members yet — just you.</div>
+        )}
+
+        {teamMembers.map(m => (
+          <div key={m.id} style={{
+            border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+            padding: '12px 14px', marginBottom: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+              <input
+                className="form-input" style={{ maxWidth: 180, fontWeight: 600 }}
+                value={m.name} onChange={e => updateMember(m.id, { name: e.target.value })}
+              />
+              <input
+                className="form-input" type="password" style={{ maxWidth: 140 }}
+                value={pendingMemberPasswords[m.id] || ''}
+                onChange={e => setPendingMemberPasswords(p => ({ ...p, [m.id]: e.target.value }))}
+                onBlur={() => setMemberPassword(m.id)}
+                onKeyDown={e => e.key === 'Enter' && setMemberPassword(m.id)}
+                placeholder={m.passwordHash ? 'Change password' : 'Set password'}
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!m.isAdmin} onChange={e => updateMember(m.id, { isAdmin: e.target.checked })} />
+                <Shield size={13} /> Admin (full access, can edit Settings)
+              </label>
+              <button
+                className="icon-btn" style={{ color: 'var(--red)', marginLeft: 'auto' }}
+                onClick={() => removeMember(m.id)}
+                title="Remove team member"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+
+            {!m.isAdmin && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>Can edit these tabs (unchecked tabs stay visible, read-only):</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {TEAM_PAGES.map(p => (
+                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!m.permissions?.[p.id]}
+                        onChange={() => toggleMemberPage(m.id, p.id)}
+                      />
+                      {p.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+          <input
+            className="form-input" style={{ maxWidth: 180 }}
+            value={newMemberName} onChange={e => setNewMemberName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addMember()}
+            placeholder="Name"
+          />
+          <input
+            className="form-input" type="password" style={{ maxWidth: 140 }}
+            value={newMemberPassword} onChange={e => setNewMemberPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addMember()}
+            placeholder="Password"
+          />
+          <button className="btn btn-ghost btn-sm" onClick={addMember} disabled={!newMemberName.trim() || !newMemberPassword.trim()}>
+            <Plus size={14} /> Add Team Member
+          </button>
+        </div>
+      </div>
+      )}
+
+      {show('appearance') && (
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title" style={{ marginBottom: 4 }}>Appearance</div>
         <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16, lineHeight: 1.6 }}>
@@ -450,7 +631,9 @@ export default function Settings({ userEmail }) {
           </div>
         </div>
       </div>
+      )}
 
+      {show('tutorial') && (
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title" style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
           <GraduationCap size={16} /> Tutorial
@@ -463,49 +646,41 @@ export default function Settings({ userEmail }) {
           Open Tutorial
         </button>
       </div>
+      )}
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="card-header">
-          <div className="card-title">Tax Scheme (BIR)</div>
+      {show('helpAssistant') && (
+      <div className="card">
+        <div className="card-title" style={{ marginBottom: 4 }}>Help Assistant</div>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+          Controls whether the in-app chat assistant can see real figures from your books —
+          account balances and individual voucher debit/credit entries — when answering
+          questions, rather than only explaining how the app works in general.
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>
-          A business is registered with the BIR as either VAT or Non-VAT (Percentage Tax) —
-          this is set here at the company level and applies to every Sales voucher. It isn't
-          something you switch per transaction.
-        </div>
-        <div className="form-grid">
-          <div className="form-group form-col-full">
-            <label className="form-label">Registration Type</label>
-            <select className="form-select" value={form.taxScheme || 'vat'} onChange={e => setF('taxScheme', e.target.value)}>
-              <option value="vat">VAT-registered</option>
-              <option value="percentage">Non-VAT — Percentage Tax</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">VAT Rate (%)</label>
-            <input className="form-input" type="number" min="0" max="100" step="0.5"
-              disabled={form.taxScheme === 'percentage'}
-              value={form.vatRate} onChange={e => setF('vatRate', parseFloat(e.target.value))} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Percentage Tax Rate (%)</label>
-            <input className="form-input" type="number" min="0" max="100" step="0.5"
-              disabled={form.taxScheme === 'vat'}
-              value={form.percentageTaxRate} onChange={e => setF('percentageTaxRate', parseFloat(e.target.value))} />
-          </div>
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
-          Whichever isn't active is kept here so switching registration types later doesn't lose the rate.
-        </div>
-
-        <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn btn-primary" onClick={save}>
-            <Save size={14} />
-            {saved ? 'Saved!' : 'Save Settings'}
-          </button>
-        </div>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={form.helpAssistantDataEnabled !== false}
+            onChange={e => {
+              const updated = { ...form, helpAssistantDataEnabled: e.target.checked }
+              setForm(updated)
+              updateSettings(updated)
+            }}
+            style={{ marginTop: 2 }}
+          />
+          <span style={{ fontSize: 13 }}>
+            Let the assistant see real voucher and account figures
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+              On by default. Turning this off doesn't limit who on your team can see what — that's
+              controlled by Team Members above — this is specifically about whether the AI
+              assistant itself is shown actual peso amounts at all. Applies to everyone using this
+              account, saves immediately.
+            </div>
+          </span>
+        </label>
       </div>
+      )}
 
+      {show('account') && (
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title" style={{ marginBottom: 12 }}>Account</div>
         <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -515,7 +690,9 @@ export default function Settings({ userEmail }) {
           <LogOut size={14} /> Sign Out
         </button>
       </div>
+      )}
 
+      {show('install') && (
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title" style={{ marginBottom: 12 }}>Install App</div>
         {installState === 'installed' ? (
@@ -562,7 +739,9 @@ export default function Settings({ userEmail }) {
           </div>
         )}
       </div>
+      )}
 
+      {show('data') && (
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title" style={{ marginBottom: 12 }}>Data</div>
         <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
@@ -629,133 +808,7 @@ export default function Settings({ userEmail }) {
           Delete All My Data
         </button>
       </div>
-
-      <div className="card">
-        <div className="card-title" style={{ marginBottom: 4 }}>Team Members</div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
-          Let more than one person use this login and still get their own view. Once you add
-          anyone here, the app will ask "Who's using this?" on every device — so add yourself
-          too, with Admin checked, or you could lock yourself out of tabs.
-        </div>
-
-        <div style={{
-          fontSize: 11.5, color: 'var(--text-3)', background: 'var(--surface2)',
-          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-          padding: '10px 12px', marginBottom: 16, lineHeight: 1.6,
-        }}>
-          Important: this is a convenience layer, not real per-user security. Everyone still
-          shares the exact same login and database access underneath — a restricted tab is
-          hidden behind a read-only overlay in the app's interface, not blocked by the database
-          itself. It stops accidental edits and keeps tabs organized by person; it won't stop
-          someone determined to get around it (e.g. via browser dev tools). Passwords are
-          stored as a salted hash, not in plain text, but this app has no server to hash them
-          the extra-slow way real logins do — see the note in migrations/008_password_hashing.sql
-          for exactly what that does and doesn't mean.
-        </div>
-
-        {teamMembers.length === 0 && (
-          <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 14 }}>No team members yet — just you.</div>
-        )}
-
-        {teamMembers.map(m => (
-          <div key={m.id} style={{
-            border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-            padding: '12px 14px', marginBottom: 10,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-              <input
-                className="form-input" style={{ maxWidth: 180, fontWeight: 600 }}
-                value={m.name} onChange={e => updateMember(m.id, { name: e.target.value })}
-              />
-              <input
-                className="form-input" type="password" style={{ maxWidth: 140 }}
-                value={pendingMemberPasswords[m.id] || ''}
-                onChange={e => setPendingMemberPasswords(p => ({ ...p, [m.id]: e.target.value }))}
-                onBlur={() => setMemberPassword(m.id)}
-                onKeyDown={e => e.key === 'Enter' && setMemberPassword(m.id)}
-                placeholder={m.passwordHash ? 'Change password' : 'Set password'}
-              />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, cursor: 'pointer' }}>
-                <input type="checkbox" checked={!!m.isAdmin} onChange={e => updateMember(m.id, { isAdmin: e.target.checked })} />
-                <Shield size={13} /> Admin (full access, can edit Settings)
-              </label>
-              <button
-                className="icon-btn" style={{ color: 'var(--red)', marginLeft: 'auto' }}
-                onClick={() => removeMember(m.id)}
-                title="Remove team member"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-
-            {!m.isAdmin && (
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>Can edit these tabs (unchecked tabs stay visible, read-only):</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                  {TEAM_PAGES.map(p => (
-                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!m.permissions?.[p.id]}
-                        onChange={() => toggleMemberPage(m.id, p.id)}
-                      />
-                      {p.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
-          <input
-            className="form-input" style={{ maxWidth: 180 }}
-            value={newMemberName} onChange={e => setNewMemberName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addMember()}
-            placeholder="Name"
-          />
-          <input
-            className="form-input" type="password" style={{ maxWidth: 140 }}
-            value={newMemberPassword} onChange={e => setNewMemberPassword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addMember()}
-            placeholder="Password"
-          />
-          <button className="btn btn-ghost btn-sm" onClick={addMember} disabled={!newMemberName.trim() || !newMemberPassword.trim()}>
-            <Plus size={14} /> Add Team Member
-          </button>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-title" style={{ marginBottom: 4 }}>Help Assistant</div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
-          Controls whether the in-app chat assistant can see real figures from your books —
-          account balances and individual voucher debit/credit entries — when answering
-          questions, rather than only explaining how the app works in general.
-        </div>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={form.helpAssistantDataEnabled !== false}
-            onChange={e => {
-              const updated = { ...form, helpAssistantDataEnabled: e.target.checked }
-              setForm(updated)
-              updateSettings(updated)
-            }}
-            style={{ marginTop: 2 }}
-          />
-          <span style={{ fontSize: 13 }}>
-            Let the assistant see real voucher and account figures
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
-              On by default. Turning this off doesn't limit who on your team can see what — that's
-              controlled by Team Members above — this is specifically about whether the AI
-              assistant itself is shown actual peso amounts at all. Applies to everyone using this
-              account, saves immediately.
-            </div>
-          </span>
-        </label>
-      </div>
+      )}
     </div>
   )
 }

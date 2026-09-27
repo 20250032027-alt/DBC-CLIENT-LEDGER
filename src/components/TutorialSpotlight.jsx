@@ -69,10 +69,20 @@ export default function TutorialSpotlight() {
   const isFirst = stepIndex === 0
   const padding = 8
 
-  // Info steps (no real element to point at) center the card — nothing
-  // to visually connect to, so a fixed centered position is the clearest
-  // choice there, not a placement algorithm with nothing to anchor to.
-  const position = rect ? computeTooltipPosition(rect) : null
+  // Info steps (no real element to point at) get a pixel-computed
+  // centered position — never CSS transform-based centering. The
+  // message-in animation below also animates `transform`, and a CSS
+  // animation targeting a property always wins over an inline style for
+  // that same property while it's running. Mixing them meant the
+  // translate(-50%,-50%) offset was fully overridden for the whole 0.2s
+  // of the entrance animation, so the card rendered shifted down-and-
+  // right (missing its centering offset) and only "snapped" into the
+  // correct spot once the animation finished and the inline transform
+  // took back over — exactly the flash-then-jump that was reported.
+  const position = rect ? computeTooltipPosition(rect) : {
+    top: (window.innerHeight - TOOLTIP_H_ESTIMATE) / 2,
+    left: (window.innerWidth - TOOLTIP_W) / 2,
+  }
 
   return (
     <>
@@ -91,9 +101,7 @@ export default function TutorialSpotlight() {
 
       <div style={{
         position: 'fixed', zIndex: 1201,
-        ...(position
-          ? { top: position.top, left: position.left }
-          : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }),
+        top: position.top, left: position.left,
         width: TOOLTIP_W, maxWidth: 'calc(100vw - 32px)', background: 'var(--surface)',
         border: '1px solid var(--border2)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
         padding: '18px 20px', animation: 'message-in 0.2s ease',
