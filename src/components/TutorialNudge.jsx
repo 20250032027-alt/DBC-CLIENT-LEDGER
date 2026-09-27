@@ -11,7 +11,7 @@ export default function TutorialNudge() {
 
   function handleNotNow() {
     dismissNudge()
-    showToast("No worries — you can start it any time from Settings.", 'info', 5000)
+    showToast("That's okay! You can start it any time from Settings.", 'info', 5000)
   }
 
   return (
@@ -23,19 +23,19 @@ export default function TutorialNudge() {
     }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <div style={{
-          width: 32, height: 32, borderRadius: '50%', background: 'var(--accent-glow)',
+          width: 34, height: 34, borderRadius: '50%', background: 'var(--accent-glow)',
           display: 'grid', placeItems: 'center', flexShrink: 0,
         }}>
-          <GraduationCap size={16} color="var(--accent)" />
+          <GraduationCap size={17} color="var(--accent)" />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 3 }}>New here?</div>
-          <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.5 }}>
-            Want a quick, hands-on look around? Takes a few minutes, and nothing you do in it is saved for real.
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>New here?</div>
+          <div style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.5 }}>
+            Want a quick look around? It only takes a few minutes, and nothing you do is saved for real.
           </div>
         </div>
         <button className="icon-btn" onClick={handleNotNow} style={{ flexShrink: 0 }} title="Not now">
-          <X size={14} />
+          <X size={15} />
         </button>
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>

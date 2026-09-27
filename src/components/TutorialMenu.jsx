@@ -20,8 +20,8 @@ export default function TutorialMenu({ visibleSegmentIds }) {
           </span>
           <button className="icon-btn" onClick={closeTutorial}><X size={18} /></button>
         </div>
-        <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 14 }}>
-          Pick any part — jump around in whatever order makes sense to you.
+        <div style={{ fontSize: 13.5, color: 'var(--text-3)', marginBottom: 14 }}>
+          Pick anything below — in any order you like.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {segments.map(seg => (
@@ -30,14 +30,14 @@ export default function TutorialMenu({ visibleSegmentIds }) {
               onClick={() => startSegment(seg.id)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
-                padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                padding: '14px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
                 background: 'var(--surface2)', cursor: 'pointer', color: 'var(--text-1)',
               }}
             >
-              <PlayCircle size={18} color="var(--accent)" style={{ flexShrink: 0 }} />
+              <PlayCircle size={20} color="var(--accent)" style={{ flexShrink: 0 }} />
               <span>
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{seg.label}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{seg.description}</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{seg.label}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{seg.description}</div>
               </span>
             </button>
           ))}
