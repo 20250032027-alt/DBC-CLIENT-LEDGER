@@ -96,6 +96,38 @@
   --shadow-lg:  0 12px 48px rgba(0,0,0,0.6);
 }
 
+/* ── True Black — a dark-mode variant, not a third independent mode.
+   Only ever applied together with [data-theme="dark"] (see theme.jsx,
+   which sets data-dark-variant="standard" whenever theme is "light", so
+   this block never accidentally applies there). Pure black backgrounds,
+   slightly lifted surfaces so cards/panels stay visually distinct from
+   the page itself instead of disappearing into it. ────────────────── */
+[data-theme="dark"][data-dark-variant="true-black"] {
+  --bg:       #000000;
+  --surface:  #0a0a0a;
+  --surface2: #141414;
+  --surface3: #1c1c1c;
+  --border:   #262626;
+  --border2:  #333333;
+}
+
+/* ── High Contrast — a legibility mode, independent of light/dark/accent.
+   Only touches what auto-adapting text and the accent presets/custom
+   color CAN'T already fix on their own: secondary label text that's
+   deliberately subtle by design, and borders/dividers that are
+   deliberately faint by design. See the reasoning worked through in
+   chat for why this is scoped narrowly rather than restyling everything. */
+[data-contrast="high"] {
+  --text-3: #4a5164;
+  --border:  #b9c0cf;
+  --border2: #a5adc0;
+}
+[data-theme="dark"][data-contrast="high"] {
+  --text-3: #a7b2c8;
+  --border:  #3d4a63;
+  --border2: #4a5875;
+}
+
 /* ── Reset ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
@@ -131,9 +163,29 @@ body {
   position: fixed;
   top: 0; left: 0; bottom: 0;
   z-index: 100;
-  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), width 0.2s ease;
   padding-left: env(safe-area-inset-left);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Collapsed = icon-only rail. Desktop only — on mobile the sidebar is
+   already a full-width slide-in overlay (see the media query further
+   down), where "collapsed" wouldn't make sense, so this only takes
+   effect at wider viewports. */
+@media (min-width: 900px) {
+  .sidebar.collapsed { width: 64px; }
+  .sidebar.collapsed .sidebar-logo-text,
+  .sidebar.collapsed .sidebar-logo-sub,
+  .sidebar.collapsed .nav-section-label,
+  .sidebar.collapsed .nav-item span {
+    display: none;
+  }
+  .sidebar.collapsed .nav-item { justify-content: center; padding: 8px; }
+  .sidebar.collapsed .sidebar-logo { justify-content: center; padding: 18px 8px; }
+  .main-area.sidebar-collapsed { margin-left: 64px; }
+}
+@media (max-width: 899px) {
+  .sidebar-collapse-toggle { display: none; }
 }
 
 .sidebar-logo {
@@ -209,7 +261,7 @@ body {
 .nav-item.active {
   background: var(--accent-subtle);
   color: var(--accent);
-  border-color: rgba(79,114,245,0.2);
+  border-color: var(--accent-glow);
   font-weight: 600;
 }
 
@@ -431,13 +483,13 @@ body {
 
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   border-color: var(--accent);
-  box-shadow: 0 1px 3px rgba(79,114,245,0.3);
+  box-shadow: 0 1px 3px var(--accent-glow);
 }
 .btn-primary:hover {
   background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(79,114,245,0.4);
+  box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .btn-ghost {

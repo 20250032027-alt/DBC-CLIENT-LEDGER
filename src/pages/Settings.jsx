@@ -4,8 +4,10 @@ import { supabase } from '../lib/supabase'
 import { getInstallState, promptInstall } from '../lib/installPrompt'
 import { clearLocalDb } from '../lib/db'
 import { stopSync } from '../lib/sync'
-import { Save, LogOut, Cloud, Smartphone, X, RotateCcw, Plus, Trash2, Shield } from 'lucide-react'
+import { Save, LogOut, Cloud, Smartphone, X, RotateCcw, Plus, Trash2, Shield, Sun, Moon, Palette, AlertTriangle, Check, Contrast, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { formatTin, normalizeTin, generateSalt, hashSecret, verifySecret } from '../utils'
+import { useTheme, ACCENT_PRESETS } from '../lib/theme.jsx'
+import { isValidHex, checkAccentAccessibility, pickReadableTextColor } from '../lib/colorUtils'
 
 // Mirrors App.jsx's NAV ids/labels for the per-tab permission checkboxes
 // below. Keep in sync if pages are ever added, renamed, or removed there.
@@ -29,8 +31,40 @@ const TEAM_PAGES = [
   { id: 'settings', label: 'Settings' },
 ]
 
+// Page background values, mirroring index.css exactly — kept here as
+// plain values rather than read live from computed CSS, since the check
+// only needs to know roughly what page background this color will sit
+// against right now, not track every possible theme in the abstract.
+const BG_BY_MODE = {
+  light: '#f4f6f9',
+  dark: '#0d1117',
+  'true-black': '#000000',
+}
+
+function AccentWarnings({ hex, theme, darkVariant }) {
+  const bgHex = theme === 'dark' && darkVariant === 'true-black' ? BG_BY_MODE['true-black'] : BG_BY_MODE[theme]
+  const warnings = checkAccentAccessibility(hex, bgHex)
+  if (warnings.length === 0) {
+    return <div style={{ fontSize: 11.5, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 5 }}><Check size={12} /> Looks readable against the current background.</div>
+  }
+  return (
+    <div style={{ fontSize: 11.5, color: 'var(--amber)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {warnings.map((w, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+          <AlertTriangle size={12} style={{ marginTop: 1, flexShrink: 0 }} /> {w}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Settings({ userEmail }) {
   const { settings, updateSettings, deleteAllData, pending } = useStore()
+  const {
+    theme, setTheme, darkVariant, setDarkVariant, contrast, setContrast,
+    accentPreset, setAccentPreset, customAccent, setCustomAccent,
+    sidebarCollapsed, setSidebarCollapsed,
+  } = useTheme()
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -233,6 +267,158 @@ export default function Settings({ userEmail }) {
               <option value="SGD">SGD — Singapore Dollar</option>
               <option value="JPY">JPY — Japanese Yen</option>
             </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title" style={{ marginBottom: 4 }}>Appearance</div>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16, lineHeight: 1.6 }}>
+          Personal to this device — each person signed in (or each Team Member profile) can set
+          this up their own way; it doesn't affect what anyone else sees.
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Mode */}
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Mode</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ background: theme === 'light' ? 'var(--accent-glow)' : undefined, borderColor: theme === 'light' ? 'var(--accent)' : undefined }}
+                onClick={() => setTheme('light')}
+              >
+                <Sun size={14} /> Light
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ background: theme === 'dark' ? 'var(--accent-glow)' : undefined, borderColor: theme === 'dark' ? 'var(--accent)' : undefined }}
+                onClick={() => setTheme('dark')}
+              >
+                <Moon size={14} /> Dark
+              </button>
+            </div>
+
+            {theme === 'dark' && (
+              <div style={{ marginTop: 10, paddingLeft: 2 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>Dark variant</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ background: darkVariant === 'standard' ? 'var(--accent-glow)' : undefined, borderColor: darkVariant === 'standard' ? 'var(--accent)' : undefined }}
+                    onClick={() => setDarkVariant('standard')}
+                  >
+                    Standard
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ background: darkVariant === 'true-black' ? 'var(--accent-glow)' : undefined, borderColor: darkVariant === 'true-black' ? 'var(--accent)' : undefined }}
+                    onClick={() => setDarkVariant('true-black')}
+                  >
+                    True Black
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* High contrast */}
+          <div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+              <input
+                type="checkbox" checked={contrast === 'high'}
+                onChange={e => setContrast(e.target.checked ? 'high' : 'normal')}
+                style={{ marginTop: 2 }}
+              />
+              <span style={{ fontSize: 13 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Contrast size={13} /> High Contrast</span>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+                  Darkens secondary text and borders that are normally kept subtle on purpose —
+                  worth turning on if small labels or table lines are ever hard to make out.
+                </div>
+              </span>
+            </label>
+          </div>
+
+          {/* Sidebar */}
+          <div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+              <input
+                type="checkbox" checked={sidebarCollapsed}
+                onChange={e => setSidebarCollapsed(e.target.checked)}
+                style={{ marginTop: 2 }}
+              />
+              <span style={{ fontSize: 13 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {sidebarCollapsed ? <PanelLeft size={13} /> : <PanelLeftClose size={13} />} Collapse sidebar to icons
+                </span>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+                  Same toggle as the icon at the top of the sidebar — more screen space, tab
+                  names hidden. Desktop only; the phone/tablet menu is unaffected.
+                </div>
+              </span>
+            </label>
+          </div>
+
+          {/* Accent color */}
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Palette size={13} /> Accent Color
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+              {Object.entries(ACCENT_PRESETS).map(([key, preset]) => (
+                <button
+                  key={key}
+                  onClick={() => setAccentPreset(key)}
+                  title={preset.label}
+                  style={{
+                    width: 36, height: 36, borderRadius: '50%', background: preset.hex,
+                    border: accentPreset === key ? '3px solid var(--text-1)' : '3px solid transparent',
+                    boxShadow: '0 0 0 1px var(--border)', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {accentPreset === key && <Check size={15} color={preset.hex === '#fef3c7' ? '#101828' : '#fff'} />}
+                </button>
+              ))}
+              <button
+                onClick={() => setAccentPreset('custom')}
+                title="Custom"
+                style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  background: accentPreset === 'custom' ? customAccent : 'conic-gradient(from 0deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
+                  border: accentPreset === 'custom' ? '3px solid var(--text-1)' : '3px solid transparent',
+                  boxShadow: '0 0 0 1px var(--border)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {accentPreset === 'custom' && <Check size={15} color={pickReadableTextColor(customAccent)} />}
+              </button>
+            </div>
+
+            {accentPreset === 'custom' && (
+              <div style={{ padding: '12px', background: 'var(--surface2)', borderRadius: 'var(--radius-sm)' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                  <input
+                    type="color" value={customAccent}
+                    onChange={e => setCustomAccent(e.target.value)}
+                    style={{ width: 40, height: 32, padding: 0, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+                  />
+                  <input
+                    className="form-input" style={{ maxWidth: 120, fontFamily: 'var(--mono)' }}
+                    value={customAccent}
+                    onChange={e => { if (isValidHex(e.target.value) || e.target.value === '#' || e.target.value.length <= 7) setCustomAccent(e.target.value) }}
+                    placeholder="#4f72f5"
+                  />
+                  <button className="btn btn-sm" style={{ background: customAccent, color: pickReadableTextColor(customAccent), border: 'none' }}>
+                    Preview Button
+                  </button>
+                </div>
+                {isValidHex(customAccent) && (
+                  <AccentWarnings hex={customAccent} theme={theme} darkVariant={darkVariant} />
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

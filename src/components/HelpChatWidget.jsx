@@ -206,7 +206,7 @@ export default function HelpChatWidget({ page, activeMember }) {
         style={{
           position: 'fixed', bottom: 20, right: 20, zIndex: 1000,
           width: 52, height: 52, borderRadius: '50%', border: 'none',
-          background: 'var(--accent)', color: '#fff', cursor: 'pointer',
+          background: 'var(--accent)', color: 'var(--accent-text)', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
         }}
@@ -245,7 +245,7 @@ export default function HelpChatWidget({ page, activeMember }) {
                   alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
                   maxWidth: '85%',
                   background: m.role === 'user' ? 'var(--accent)' : 'var(--surface2)',
-                  color: m.role === 'user' ? '#fff' : 'var(--text-1)',
+                  color: m.role === 'user' ? 'var(--accent-text)' : 'var(--text-1)',
                   borderRadius: 10, padding: '8px 11px', fontSize: 12.5, lineHeight: 1.5,
                   whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined,
                   animation: 'message-in 0.2s ease',

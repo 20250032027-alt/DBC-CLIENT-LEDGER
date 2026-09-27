@@ -29,7 +29,7 @@ import {
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
-  FileBarChart, FileCheck, Percent, Package, Layers, Factory, ShoppingCart,
+  FileBarChart, FileCheck, Percent, Package, Layers, Factory, ShoppingCart, PanelLeft, PanelLeftClose,
 } from 'lucide-react'
 import { verifySecret } from './utils'
 
@@ -245,6 +245,7 @@ function AppShell({ userEmail, bypassApprovalGate }) {
   const [page, setPage] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { loading, error, clearError, conflicts, clearConflicts, settings } = useStore()
+  const { sidebarCollapsed, toggleSidebarCollapsed } = useTheme()
   const Page = PAGES[page]
 
   // ── Team Members (Settings → Team Members): a lightweight, UI-level
@@ -363,38 +364,46 @@ function AppShell({ userEmail, bypassApprovalGate }) {
     <div className="app-shell">
       <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
 
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-logo">
-          <div className="sidebar-logo-mark"><BookOpen size={16} color="#fff" /></div>
+          <div className="sidebar-logo-mark"><BookOpen size={16} color="var(--accent-text)" /></div>
           <div>
             <div className="sidebar-logo-text">DBC Ledger</div>
             <div className="sidebar-logo-sub">Accounting</div>
           </div>
+          <button
+            className="icon-btn sidebar-collapse-toggle"
+            onClick={toggleSidebarCollapsed}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            style={{ marginLeft: 'auto' }}
+          >
+            {sidebarCollapsed ? <PanelLeft size={15} /> : <PanelLeftClose size={15} />}
+          </button>
         </div>
 
         <nav className="sidebar-nav">
           <div className="nav-section-label">Main</div>
           {NAV.slice(0, 2).map(({ id, label, icon: Icon }) => (
             <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}>
-              <Icon size={16} />{label}
+              <Icon size={16} /><span>{label}</span>
             </div>
           ))}
           <div className="nav-section-label">Accounting</div>
           {NAV.slice(2, 8).map(({ id, label, icon: Icon }) => (
             <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}>
-              <Icon size={16} />{label}
+              <Icon size={16} /><span>{label}</span>
             </div>
           ))}
           <div className="nav-section-label">Finance</div>
           {NAV.slice(8, 9).map(({ id, label, icon: Icon }) => (
             <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}>
-              <Icon size={16} />{label}
+              <Icon size={16} /><span>{label}</span>
             </div>
           ))}
           <div className="nav-section-label">System</div>
           {NAV.slice(9).map(({ id, label, icon: Icon }) => (
             <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)}>
-              <Icon size={16} />{label}
+              <Icon size={16} /><span>{label}</span>
             </div>
           ))}
         </nav>
@@ -428,7 +437,7 @@ function AppShell({ userEmail, bypassApprovalGate }) {
         </div>
       </aside>
 
-      <div className="main-area">
+      <div className={`main-area ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <header className="topbar">
           <button className="hamburger" onClick={() => setSidebarOpen(v => !v)}>
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
