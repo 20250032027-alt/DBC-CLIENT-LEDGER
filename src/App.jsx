@@ -581,9 +581,9 @@ function AdminConsole({ onView }) {
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', padding: '32px 24px' }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-1)' }}>Account Approvals</h1>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn btn-ghost btn-sm" disabled={refreshing} onClick={handleRefresh}>
               <RefreshCw size={14} className={refreshing ? 'spin' : ''} /> Refresh
             </button>
@@ -605,12 +605,12 @@ function AdminConsole({ onView }) {
               {pending.length === 0 ? (
                 <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Nothing waiting on you.</div>
               ) : pending.map(r => (
-                <div key={r.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div key={r.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.company || '(no company name yet)'}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.email || r.user_id}</div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => onView(r.user_id, r.company)}>
                       Manage Ledger
                     </button>
@@ -627,12 +627,12 @@ function AdminConsole({ onView }) {
               {approved.length === 0 ? (
                 <div style={{ fontSize: 13, color: 'var(--text-3)' }}>None yet.</div>
               ) : approved.map(r => (
-                <div key={r.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div key={r.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.company || '(no company name yet)'}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.email || r.user_id}</div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => onView(r.user_id, r.company)}>
                       Manage Ledger
                     </button>

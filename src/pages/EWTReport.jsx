@@ -634,7 +634,7 @@ export default function EWTReport() {
           style={{
             fontSize: 12.5, padding: '8px 16px',
             background: reportTab === 'ewt' ? 'var(--accent)' : undefined,
-            color: reportTab === 'ewt' ? '#fff' : undefined,
+            color: reportTab === 'ewt' ? 'var(--accent-text)' : undefined,
           }}
           onClick={() => setReportTab('ewt')}
         >
@@ -645,7 +645,7 @@ export default function EWTReport() {
           style={{
             fontSize: 12.5, padding: '8px 16px',
             background: reportTab === 'sawt' ? 'var(--accent)' : undefined,
-            color: reportTab === 'sawt' ? '#fff' : undefined,
+            color: reportTab === 'sawt' ? 'var(--accent-text)' : undefined,
           }}
           onClick={() => setReportTab('sawt')}
         >
@@ -769,7 +769,7 @@ export default function EWTReport() {
                   style={{
                     fontSize: 12, padding: '7px 12px',
                     background: f2307Quarter === qq ? 'var(--accent)' : undefined,
-                    color: f2307Quarter === qq ? '#fff' : undefined,
+                    color: f2307Quarter === qq ? 'var(--accent-text)' : undefined,
                   }}
                   onClick={() => setF2307Quarter(qq)}
                 >

@@ -571,6 +571,8 @@ body {
   cursor: pointer;
   color: var(--text-3);
   padding: 5px;
+  min-width: 30px;
+  min-height: 30px;
   border-radius: var(--radius-sm);
   transition: all 0.1s;
   display: grid;
@@ -578,6 +580,18 @@ body {
   flex-shrink: 0;
 }
 .icon-btn:hover { background: var(--surface2); color: var(--text-1); }
+
+/* Touch devices need a genuinely tappable target, not just a visually
+   adequate one — a mouse pointer doesn't need this, but this same 30px
+   button is used on nearly every table row in the app (edit/delete
+   icons), and on a phone that's below both Apple's and Google's
+   recommended minimum tap size. Scoped to actual touch input
+   (pointer: coarse) rather than just narrow screens, since a
+   touch-capable laptop benefits from this too, while a mouse-only
+   narrow browser window doesn't need it. */
+@media (pointer: coarse) {
+  .icon-btn { min-width: 40px; min-height: 40px; }
+}
 
 /* ════════════════════════════════════════════════════════════════
    FORM CONTROLS

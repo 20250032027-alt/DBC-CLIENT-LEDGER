@@ -317,17 +317,17 @@ export default function Assembly() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
         <button
           className="btn btn-ghost"
-          style={{ fontSize: 12.5, padding: '8px 16px', background: tab === 'products' ? 'var(--accent)' : undefined, color: tab === 'products' ? '#fff' : undefined }}
+          style={{ fontSize: 12.5, padding: '8px 16px', background: tab === 'products' ? 'var(--accent)' : undefined, color: tab === 'products' ? 'var(--accent-text)' : undefined }}
           onClick={() => setTab('products')}
         >
           Products
         </button>
         <button
           className="btn btn-ghost"
-          style={{ fontSize: 12.5, padding: '8px 16px', background: tab === 'recipes' ? 'var(--accent)' : undefined, color: tab === 'recipes' ? '#fff' : undefined }}
+          style={{ fontSize: 12.5, padding: '8px 16px', background: tab === 'recipes' ? 'var(--accent)' : undefined, color: tab === 'recipes' ? 'var(--accent-text)' : undefined }}
           onClick={() => setTab('recipes')}
         >
           Recipes

@@ -157,7 +157,7 @@ export default function TaxReturn() {
               style={{
                 fontSize: 12, padding: '5px 12px',
                 background: quarter === q ? 'var(--accent)' : undefined,
-                color: quarter === q ? '#fff' : undefined,
+                color: quarter === q ? 'var(--accent-text)' : undefined,
               }}
               onClick={() => setQuarter(q)}
             >
