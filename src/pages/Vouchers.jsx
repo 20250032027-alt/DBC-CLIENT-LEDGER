@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink } from 'lucide-react'
 import { showToast } from '../lib/toast'
+import { compressAttachment } from '../lib/compressAttachment'
 
 const TYPES = ['sales', 'general', 'cash receipt', 'cash disbursement', 'expense', 'adjustment']
 
@@ -840,7 +841,7 @@ function AccountingCalc({ onUseDebit, onUseCredit, taxRate = 12 }) {
   }
   const btnNum  = { ...btnBase, background: 'var(--surface3)', color: 'var(--text-1)' }
   const btnOp   = { ...btnBase, background: 'var(--surface2)', color: 'var(--accent)', fontSize: 16 }
-  const btnEq   = { ...btnBase, background: 'var(--accent)', color: '#fff', fontSize: 16 }
+  const btnEq   = { ...btnBase, background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 16 }
   const btnSpec = { ...btnBase, background: 'var(--surface2)', color: 'var(--text-2)', fontSize: 12 }
 
   const grid4 = { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5 }
@@ -1505,8 +1506,13 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
     setAttachmentError('')
     setUploadingAttachment(true)
     try {
-      const attachment = await uploadVoucherAttachment(voucher.id, file)
+      const { file: toUpload, originalSize, finalSize, changed } = await compressAttachment(file)
+      const attachment = await uploadVoucherAttachment(voucher.id, toUpload)
       setForm(f => ({ ...f, attachments: [...(f.attachments || []), attachment] }))
+      if (changed) {
+        const pct = Math.round((1 - finalSize / originalSize) * 100)
+        showToast(`Attached — compressed from ${formatFileSize(originalSize)} to ${formatFileSize(finalSize)} (${pct}% smaller).`, 'synced')
+      }
     } catch (err) {
       setAttachmentError(err.message?.includes('exceeded the maximum allowed size')
         ? 'That file is too large — 10MB max per attachment.'
@@ -1840,7 +1846,7 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
                 Recurring Templates
                 {adjustmentTemplates.length > 0 && (
                   <span style={{
-                    background: 'var(--accent)', color: '#fff',
+                    background: 'var(--accent)', color: 'var(--accent-text)',
                     borderRadius: 99, fontSize: 10, padding: '1px 6px', fontWeight: 700,
                   }}>
                     {adjustmentTemplates.length}
