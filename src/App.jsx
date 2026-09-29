@@ -679,8 +679,17 @@ function AdminConsole({ onView }) {
   async function deleteReport(r) {
     if (!confirm('Delete this report? This can\'t be undone.')) return
     if (r.screenshot_path) await supabase.storage.from('report-screenshots').remove([r.screenshot_path])
-    const { error: err } = await supabase.from('reports').delete().eq('id', r.id)
-    if (err) showToast(err.message, 'error')
+    // .select() after .delete() returns the rows that were actually
+    // deleted. This matters because a delete blocked by Row Level
+    // Security doesn't come back as an error at all — Postgres just
+    // matches zero rows and reports success, so checking for an error
+    // alone would miss this entirely and silently do nothing.
+    const { data, error: err } = await supabase.from('reports').delete().eq('id', r.id).select()
+    if (err) {
+      showToast(err.message, 'error')
+    } else if (!data || data.length === 0) {
+      showToast('Delete was blocked — the delete permission migration may not be applied yet.', 'error')
+    }
     await loadReports()
   }
 
