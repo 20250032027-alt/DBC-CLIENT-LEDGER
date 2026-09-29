@@ -586,7 +586,6 @@ function AdminConsole({ onView }) {
   const [busyId, setBusyId] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [reports, setReports] = useState(null)
-  const [reportFilter, setReportFilter] = useState('open') // 'open' | 'all'
   const [expandedReportId, setExpandedReportId] = useState(null)
 
   async function load() {
@@ -599,12 +598,32 @@ function AdminConsole({ onView }) {
     else setRows(data)
   }
 
+  const RESOLVED_GRACE_DAYS = 3
+
   async function loadReports() {
     const { data, error: err } = await supabase
       .from('reports')
       .select('*')
       .order('created_at', { ascending: false })
-    if (!err) setReports(data)
+    if (err) return
+
+    // Sweep expired resolved reports on every load — piggybacking on the
+    // polling/refresh this page already does, rather than a separate
+    // scheduled job. A report past its grace window gets deleted here,
+    // screenshot first, then the row, same as before — just delayed by
+    // the grace period instead of happening the instant it's resolved.
+    const cutoff = Date.now() - RESOLVED_GRACE_DAYS * 24 * 60 * 60 * 1000
+    const expired = (data || []).filter(r => r.status === 'resolved' && r.resolved_at && new Date(r.resolved_at).getTime() < cutoff)
+    if (expired.length > 0) {
+      for (const r of expired) {
+        if (r.screenshot_path) await supabase.storage.from('report-screenshots').remove([r.screenshot_path])
+        await supabase.from('reports').delete().eq('id', r.id)
+      }
+      const expiredIds = new Set(expired.map(r => r.id))
+      setReports((data || []).filter(r => !expiredIds.has(r.id)))
+    } else {
+      setReports(data)
+    }
   }
 
   useEffect(() => {
@@ -612,7 +631,8 @@ function AdminConsole({ onView }) {
     loadReports()
     // New signups can take a moment to actually reach the cloud — poll
     // periodically so a pending account shows up without needing a manual
-    // page reload to notice it. Same reasoning applies to new reports.
+    // page reload to notice it. Same reasoning applies to new reports,
+    // and this is also what actually carries out the grace-period sweep.
     const interval = setInterval(() => { load(); loadReports() }, 20000)
     return () => clearInterval(interval)
   }, [])
@@ -632,20 +652,30 @@ function AdminConsole({ onView }) {
   }
 
   async function setReportStatus(id, status) {
-    const { error: err } = await supabase.from('reports').update({ status }).eq('id', id)
+    // Resolving starts the grace period rather than deleting right away;
+    // reopening (status back to 'new') clears it — cancels the pending
+    // deletion if something was resolved by mistake.
+    const payload = status === 'resolved' ? { status, resolved_at: new Date().toISOString() } : { status, resolved_at: null }
+    const { error: err } = await supabase.from('reports').update(payload).eq('id', id)
     if (err) showToast(err.message, 'error')
     await loadReports()
   }
 
   async function viewScreenshot(path) {
+    // Opened immediately, synchronously, in direct response to the click —
+    // browsers commonly block a window.open() that happens AFTER an
+    // await, since by then it's no longer clearly tied to the click that
+    // triggered it. Opening a blank tab right away and redirecting it
+    // once the real URL is ready keeps it inside that trusted window.
+    const tab = window.open('', '_blank', 'noopener')
     const { data, error: err } = await supabase.storage.from('report-screenshots').createSignedUrl(path, 3600)
-    if (err) { showToast('Could not open that screenshot.', 'error'); return }
-    window.open(data.signedUrl, '_blank', 'noopener')
+    if (err) { tab?.close(); showToast('Could not open that screenshot.', 'error'); return }
+    if (tab) tab.location.href = data.signedUrl
   }
 
   const pending = (rows || []).filter(r => !r.approved)
   const approved = (rows || []).filter(r => r.approved)
-  const visibleReports = (reports || []).filter(r => reportFilter === 'all' || r.status !== 'resolved')
+  const visibleReports = reports || []
   const openReportCount = (reports || []).filter(r => r.status !== 'resolved').length
 
   return (
@@ -715,14 +745,8 @@ function AdminConsole({ onView }) {
             </div>
 
             <div className="card" style={{ marginTop: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-                <div className="card-title">
-                  Reports {openReportCount > 0 && <span className="badge badge-amber" style={{ marginLeft: 6 }}>{openReportCount}</span>}
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-ghost btn-sm" style={{ background: reportFilter === 'open' ? 'var(--accent-glow)' : undefined }} onClick={() => setReportFilter('open')}>Open</button>
-                  <button className="btn btn-ghost btn-sm" style={{ background: reportFilter === 'all' ? 'var(--accent-glow)' : undefined }} onClick={() => setReportFilter('all')}>All</button>
-                </div>
+              <div className="card-title" style={{ marginBottom: 12 }}>
+                Reports {openReportCount > 0 && <span className="badge badge-amber" style={{ marginLeft: 6 }}>{openReportCount}</span>}
               </div>
 
               {visibleReports.length === 0 ? (
@@ -731,6 +755,12 @@ function AdminConsole({ onView }) {
                 const CategoryIcon = { bug: Bug, confusing: HelpCircle, suggestion: Lightbulb, other: MoreHorizontal }[r.category] || MoreHorizontal
                 const statusColor = { new: 'badge-amber', seen: 'badge-blue', resolved: 'badge-green' }[r.status] || 'badge-gray'
                 const isExpanded = expandedReportId === r.id
+                let deletionNote = null
+                if (r.status === 'resolved' && r.resolved_at) {
+                  const msLeft = new Date(r.resolved_at).getTime() + RESOLVED_GRACE_DAYS * 24 * 60 * 60 * 1000 - Date.now()
+                  const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000))
+                  deletionNote = daysLeft <= 0 ? 'Deletes shortly' : daysLeft === 1 ? 'Deletes tomorrow' : `Deletes in ${daysLeft}d`
+                }
                 return (
                   <div key={r.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }} onClick={() => setExpandedReportId(isExpanded ? null : r.id)}>
@@ -744,7 +774,10 @@ function AdminConsole({ onView }) {
                           {r.company || r.email || 'Unknown'} · {r.page || 'unknown page'} · {new Date(r.created_at).toLocaleString('en-PH')}
                         </div>
                       </div>
-                      <span className={`badge ${statusColor}`} style={{ flexShrink: 0 }}>{{ new: 'New', seen: 'Seen', resolved: 'Resolved' }[r.status] || r.status}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                        <span className={`badge ${statusColor}`}>{{ new: 'New', seen: 'Seen', resolved: 'Resolved' }[r.status] || r.status}</span>
+                        {deletionNote && <span style={{ fontSize: 10.5, color: 'var(--text-3)' }}>{deletionNote}</span>}
+                      </div>
                     </div>
 
                     {isExpanded && (
@@ -763,7 +796,7 @@ function AdminConsole({ onView }) {
                               <Camera size={13} /> View Screenshot
                             </button>
                           )}
-                          {r.status !== 'seen' && (
+                          {r.status !== 'seen' && r.status !== 'resolved' && (
                             <button className="btn btn-ghost btn-sm" onClick={() => setReportStatus(r.id, 'seen')}>Mark Seen</button>
                           )}
                           {r.status !== 'resolved' && (

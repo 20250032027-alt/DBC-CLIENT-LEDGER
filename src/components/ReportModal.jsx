@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { captureScreenshot } from '../lib/screenshot'
+import { compressAttachment } from '../lib/compressAttachment'
 import { showToast } from '../lib/toast'
-import { X, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera, RotateCcw } from 'lucide-react'
+import { X, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera, RotateCcw, Upload, Trash2 } from 'lucide-react'
 
 const CATEGORIES = [
   { id: 'bug', label: 'Something broken', icon: Bug },
@@ -31,6 +32,7 @@ export default function ReportModal({ page, selectedText, initialDescription, in
   const [screenshot, setScreenshot] = useState(initialScreenshot)
   const [includeScreenshot, setIncludeScreenshot] = useState(true)
   const [retaking, setRetaking] = useState(false)
+  const [uploading, setUploading] = useState(false)
   // Purely local — whether THIS modal's own markup is momentarily hidden
   // while a fresh screenshot is captured. Kept internal rather than
   // routed through the parent's open/closed state, so there's no
@@ -64,6 +66,25 @@ export default function ReportModal({ page, selectedText, initialDescription, in
     } finally {
       setRetaking(false)
       setSelfHidden(false)
+    }
+  }
+
+  // Same compression pipeline as receipts and the auto-capture — a
+  // person's own uploaded screenshot goes through exactly the same
+  // size/quality treatment, not a separate, uncompressed path.
+  async function handleUpload(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    try {
+      const { file: compressed } = await compressAttachment(file)
+      setScreenshot(compressed)
+    } catch (err) {
+      showToast('Could not use that file — try a different image.', 'error')
+      console.error('screenshot upload error:', err)
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -131,24 +152,37 @@ export default function ReportModal({ page, selectedText, initialDescription, in
           </label>
         </div>
         {includeScreenshot && (
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 10, background: 'var(--surface2)', borderRadius: 'var(--radius-sm)' }}>
-            {previewUrl ? (
-              <img src={previewUrl} alt="Screenshot preview" style={{ width: 70, height: 50, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
-            ) : (
-              <div style={{ width: 70, height: 50, display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}><Camera size={18} /></div>
-            )}
-            <div style={{ flex: 1, fontSize: 12, color: 'var(--text-3)' }}>
-              {retaking ? 'Capturing...' : 'A snapshot of the page as it looked just now.'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, background: 'var(--surface2)', borderRadius: 'var(--radius-sm)' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              {previewUrl ? (
+                <img src={previewUrl} alt="Screenshot preview" style={{ width: 70, height: 50, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+              ) : (
+                <div style={{ width: 70, height: 50, display: 'grid', placeItems: 'center', color: 'var(--text-3)', flexShrink: 0 }}><Camera size={18} /></div>
+              )}
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--text-3)' }}>
+                {retaking ? 'Capturing...' : uploading ? 'Uploading...' : screenshot ? 'Ready to send.' : 'No screenshot attached.'}
+              </div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={handleRetake} disabled={retaking}>
-              <RotateCcw size={13} /> Retake
-            </button>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button className="btn btn-ghost btn-sm" onClick={handleRetake} disabled={retaking || uploading}>
+                <RotateCcw size={13} /> {screenshot ? 'Retake' : 'Capture Page'}
+              </button>
+              <label className="btn btn-ghost btn-sm" style={{ cursor: uploading ? 'default' : 'pointer' }}>
+                <Upload size={13} /> Upload Your Own
+                <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploading} onChange={handleUpload} />
+              </label>
+              {screenshot && (
+                <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => setScreenshot(null)}>
+                  <Trash2 size={13} /> Remove
+                </button>
+              )}
+            </div>
           </div>
         )}
 
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={() => onClose(true)}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || uploading || retaking}>
             {submitting ? 'Sending...' : 'Send Report'}
           </button>
         </div>
