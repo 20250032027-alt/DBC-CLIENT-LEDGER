@@ -37,7 +37,7 @@ import {
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
   FileBarChart, FileCheck, Percent, Package, Layers, Factory, ShoppingCart, PanelLeft, PanelLeftClose,
-  ChevronDown, ChevronRight, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera,
+  ChevronDown, ChevronRight, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera, Trash2,
 } from 'lucide-react'
 import { verifySecret } from './utils'
 
@@ -586,6 +586,7 @@ function AdminConsole({ onView }) {
   const [busyId, setBusyId] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [reports, setReports] = useState(null)
+  const [screenshotUrls, setScreenshotUrls] = useState({})
   const [expandedReportId, setExpandedReportId] = useState(null)
 
   async function load() {
@@ -614,15 +615,29 @@ function AdminConsole({ onView }) {
     // the grace period instead of happening the instant it's resolved.
     const cutoff = Date.now() - RESOLVED_GRACE_DAYS * 24 * 60 * 60 * 1000
     const expired = (data || []).filter(r => r.status === 'resolved' && r.resolved_at && new Date(r.resolved_at).getTime() < cutoff)
-    if (expired.length > 0) {
-      for (const r of expired) {
-        if (r.screenshot_path) await supabase.storage.from('report-screenshots').remove([r.screenshot_path])
-        await supabase.from('reports').delete().eq('id', r.id)
-      }
-      const expiredIds = new Set(expired.map(r => r.id))
-      setReports((data || []).filter(r => !expiredIds.has(r.id)))
-    } else {
-      setReports(data)
+    for (const r of expired) {
+      if (r.screenshot_path) await supabase.storage.from('report-screenshots').remove([r.screenshot_path])
+      await supabase.from('reports').delete().eq('id', r.id)
+    }
+    const expiredIds = new Set(expired.map(r => r.id))
+    const remaining = (data || []).filter(r => !expiredIds.has(r.id))
+    setReports(remaining)
+
+    // Pre-fetch a signed URL for every screenshot up front, rather than
+    // fetching one on click and then handing it to window.open() — that
+    // approach turned out unreliable (Firefox in particular) since a
+    // window.open() called after an await, or one whose reference is
+    // steered post-hoc via noopener, isn't consistently treated as a
+    // trusted, user-initiated open across browsers. A real <a href>
+    // pointed at an already-known URL sidesteps all of that; it's just
+    // a normal link.
+    const withShots = remaining.filter(r => r.screenshot_path)
+    if (withShots.length > 0) {
+      const entries = await Promise.all(withShots.map(async r => {
+        const { data: signed } = await supabase.storage.from('report-screenshots').createSignedUrl(r.screenshot_path, 3600)
+        return [r.screenshot_path, signed?.signedUrl]
+      }))
+      setScreenshotUrls(Object.fromEntries(entries.filter(([, url]) => url)))
     }
   }
 
@@ -661,16 +676,12 @@ function AdminConsole({ onView }) {
     await loadReports()
   }
 
-  async function viewScreenshot(path) {
-    // Opened immediately, synchronously, in direct response to the click —
-    // browsers commonly block a window.open() that happens AFTER an
-    // await, since by then it's no longer clearly tied to the click that
-    // triggered it. Opening a blank tab right away and redirecting it
-    // once the real URL is ready keeps it inside that trusted window.
-    const tab = window.open('', '_blank', 'noopener')
-    const { data, error: err } = await supabase.storage.from('report-screenshots').createSignedUrl(path, 3600)
-    if (err) { tab?.close(); showToast('Could not open that screenshot.', 'error'); return }
-    if (tab) tab.location.href = data.signedUrl
+  async function deleteReport(r) {
+    if (!confirm('Delete this report? This can\'t be undone.')) return
+    if (r.screenshot_path) await supabase.storage.from('report-screenshots').remove([r.screenshot_path])
+    const { error: err } = await supabase.from('reports').delete().eq('id', r.id)
+    if (err) showToast(err.message, 'error')
+    await loadReports()
   }
 
   const pending = (rows || []).filter(r => !r.approved)
@@ -792,9 +803,18 @@ function AdminConsole({ onView }) {
                         )}
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           {r.screenshot_path && (
-                            <button className="btn btn-ghost btn-sm" onClick={() => viewScreenshot(r.screenshot_path)}>
-                              <Camera size={13} /> View Screenshot
-                            </button>
+                            screenshotUrls[r.screenshot_path] ? (
+                              <a
+                                href={screenshotUrls[r.screenshot_path]} target="_blank" rel="noopener noreferrer"
+                                className="btn btn-ghost btn-sm"
+                              >
+                                <Camera size={13} /> View Screenshot
+                              </a>
+                            ) : (
+                              <button className="btn btn-ghost btn-sm" disabled>
+                                <Camera size={13} /> Loading...
+                              </button>
+                            )
                           )}
                           {r.status !== 'seen' && r.status !== 'resolved' && (
                             <button className="btn btn-ghost btn-sm" onClick={() => setReportStatus(r.id, 'seen')}>Mark Seen</button>
@@ -805,6 +825,9 @@ function AdminConsole({ onView }) {
                           {r.status === 'resolved' && (
                             <button className="btn btn-ghost btn-sm" onClick={() => setReportStatus(r.id, 'new')}>Reopen</button>
                           )}
+                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => deleteReport(r)}>
+                            <Trash2 size={13} /> Delete
+                          </button>
                         </div>
                       </div>
                     )}
