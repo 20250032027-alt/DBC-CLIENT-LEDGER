@@ -51,9 +51,9 @@ export default function ReportSelectionPill({ page }) {
     }
   }
 
-  function handleClose(fullyClose) {
-    setModalState(fullyClose ? null : 'hidden')
-    if (fullyClose) window.getSelection()?.removeAllRanges()
+  function handleClose() {
+    setModalState(null)
+    window.getSelection()?.removeAllRanges()
   }
 
   function handleSubmitted() {
@@ -77,16 +77,14 @@ export default function ReportSelectionPill({ page }) {
         </button>
       )}
 
-      {modalState && (
-        <div style={{ display: modalState === 'hidden' ? 'none' : 'block' }}>
-          <ReportModal
-            page={page}
-            selectedText={selectedText}
-            initialScreenshot={screenshot}
-            onClose={handleClose}
-            onSubmitted={handleSubmitted}
-          />
-        </div>
+      {modalState === 'open' && (
+        <ReportModal
+          page={page}
+          selectedText={selectedText}
+          initialScreenshot={screenshot}
+          onClose={handleClose}
+          onSubmitted={handleSubmitted}
+        />
       )}
     </>
   )

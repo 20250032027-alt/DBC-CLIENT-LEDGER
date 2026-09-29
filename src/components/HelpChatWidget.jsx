@@ -320,17 +320,15 @@ export default function HelpChatWidget({ page, activeMember }) {
         </div>
       )}
 
-      {reportState && reportState !== 'capturing' && (
-        <div style={{ display: reportState === 'hidden' ? 'none' : 'block' }}>
-          <ReportModal
-            page={page}
-            initialDescription={reportPrefill}
-            initialCategory="bug"
-            initialScreenshot={reportScreenshot}
-            onClose={fullyClose => setReportState(fullyClose ? null : 'hidden')}
-            onSubmitted={() => {}}
-          />
-        </div>
+      {reportState === 'open' && (
+        <ReportModal
+          page={page}
+          initialDescription={reportPrefill}
+          initialCategory="bug"
+          initialScreenshot={reportScreenshot}
+          onClose={() => setReportState(null)}
+          onSubmitted={() => {}}
+        />
       )}
     </>
   )

@@ -29,8 +29,8 @@ export default function ReportButton({ page }) {
     }
   }
 
-  function handleClose(fullyClose) {
-    setModalState(fullyClose ? null : 'hidden')
+  function handleClose() {
+    setModalState(null)
   }
 
   function handleSubmitted() {
@@ -55,15 +55,13 @@ export default function ReportButton({ page }) {
         {capturing ? <Loader2 size={19} className="spin" /> : <Flag size={19} />}
       </button>
 
-      {modalState && (
-        <div style={{ display: modalState === 'hidden' ? 'none' : 'block' }}>
-          <ReportModal
-            page={page}
-            initialScreenshot={screenshot}
-            onClose={handleClose}
-            onSubmitted={handleSubmitted}
-          />
-        </div>
+      {modalState === 'open' && (
+        <ReportModal
+          page={page}
+          initialScreenshot={screenshot}
+          onClose={handleClose}
+          onSubmitted={handleSubmitted}
+        />
       )}
     </>
   )

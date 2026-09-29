@@ -31,6 +31,12 @@ export default function ReportModal({ page, selectedText, initialDescription, in
   const [screenshot, setScreenshot] = useState(initialScreenshot)
   const [includeScreenshot, setIncludeScreenshot] = useState(true)
   const [retaking, setRetaking] = useState(false)
+  // Purely local — whether THIS modal's own markup is momentarily hidden
+  // while a fresh screenshot is captured. Kept internal rather than
+  // routed through the parent's open/closed state, so there's no
+  // three-way state (open / hidden / closed) squeezed into one boolean
+  // that only ever had room for two.
+  const [selfHidden, setSelfHidden] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [previewUrl, setPreviewUrl] = useState(null)
 
@@ -48,7 +54,7 @@ export default function ReportModal({ page, selectedText, initialDescription, in
   // the initial capture, just triggered again on demand.
   async function handleRetake() {
     setRetaking(true)
-    onClose(true) // tell the parent to hide (not fully close) while we recapture
+    setSelfHidden(true) // hide THIS modal's own markup so the screenshot doesn't capture itself
     await new Promise(r => setTimeout(r, 150))
     try {
       const shot = await captureScreenshot()
@@ -57,7 +63,7 @@ export default function ReportModal({ page, selectedText, initialDescription, in
       showToast('Could not capture a new screenshot.', 'error')
     } finally {
       setRetaking(false)
-      onClose(false) // show again
+      setSelfHidden(false)
     }
   }
 
@@ -87,7 +93,7 @@ export default function ReportModal({ page, selectedText, initialDescription, in
   }
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose(true)}>
+    <div className="modal-backdrop" style={{ display: selfHidden ? 'none' : 'flex' }} onClick={e => e.target === e.currentTarget && onClose(true)}>
       <div className="modal" style={{ maxWidth: 480 }} onKeyDown={e => e.key === 'Escape' && onClose(true)}>
         <div className="modal-header">
           <span className="modal-title">Report a Problem</span>
