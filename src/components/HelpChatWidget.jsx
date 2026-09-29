@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { MessageCircleQuestion, X, Send, Loader2 } from 'lucide-react'
+import { MessageCircleQuestion, X, Send, Loader2, Flag } from 'lucide-react'
 import { supabase, supabaseUrl } from '../lib/supabase'
 import { useStore } from '../store/useStore.jsx'
 import { buildDataSummary } from '../utils'
 import { showToast } from '../lib/toast'
+import { captureScreenshot } from '../lib/screenshot'
+import ReportModal from './ReportModal.jsx'
 
 // ── Minimal markdown rendering — no new dependency ──
 // The model's answers use a small, predictable set of formatting: **bold**,
@@ -114,9 +116,12 @@ const TEAM_PAGES = [
 export default function HelpChatWidget({ page, activeMember }) {
   const { vouchers, clients, bills, accounts, settings } = useStore()
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState([]) // [{ role: 'user'|'model', text }]
+  const [messages, setMessages] = useState([]) // [{ role: 'user'|'model'|'error', text, detail? }]
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
+  const [reportState, setReportState] = useState(null) // null | 'capturing' | 'hidden' | 'open'
+  const [reportPrefill, setReportPrefill] = useState('')
+  const [reportScreenshot, setReportScreenshot] = useState(null)
   const scrollRef = useRef(null)
 
   useEffect(() => {
@@ -190,10 +195,27 @@ export default function HelpChatWidget({ page, activeMember }) {
         userMessage = 'Help Chat\'s AI provider is temporarily overloaded — try again in a minute or two.'
       }
       showToast(userMessage, 'error', 7000) // longer than the default 4s — an error worth actually seeing
-      setMessages(nextMessages) // drop the empty placeholder, back to before this question was asked
+      // Also left in the chat itself, not just a toast that disappears in
+      // a few seconds — this is what makes "report this" possible after
+      // the fact, and gives something to point at if someone asks the
+      // admin about it later.
+      setMessages(m => [...m.filter(msg => msg.text !== '' || msg.role !== 'model'), { role: 'error', text: userMessage, detail: raw }])
       console.error('help chat error:', err)
     } finally {
       setStreaming(false)
+    }
+  }
+
+  async function handleReportError(detail) {
+    setReportState('capturing')
+    setReportPrefill(`The chat assistant showed this error:\n\n${detail}\n\n`)
+    try {
+      const shot = await captureScreenshot()
+      setReportScreenshot(shot)
+    } catch (e) {
+      console.error('screenshot capture failed:', e)
+    } finally {
+      setReportState('open')
     }
   }
 
@@ -241,6 +263,25 @@ export default function HelpChatWidget({ page, activeMember }) {
             )}
             {messages.map((m, i) => {
               const isLastAndEmpty = streaming && i === messages.length - 1 && m.role === 'model' && !m.text
+              if (m.role === 'error') {
+                return (
+                  <div key={i} style={{
+                    alignSelf: 'flex-start', maxWidth: '90%',
+                    background: 'var(--amber-dim)', color: 'var(--amber)',
+                    borderRadius: 10, padding: '8px 11px', fontSize: 12.5, lineHeight: 1.5,
+                    animation: 'message-in 0.2s ease', display: 'flex', flexDirection: 'column', gap: 6,
+                  }}>
+                    <div>{m.text}</div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ alignSelf: 'flex-start', fontSize: 11.5, padding: '3px 9px' }}
+                      onClick={() => handleReportError(m.detail)}
+                    >
+                      <Flag size={12} /> Report this
+                    </button>
+                  </div>
+                )
+              }
               return (
                 <div key={i} style={{
                   alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
@@ -276,6 +317,19 @@ export default function HelpChatWidget({ page, activeMember }) {
               {streaming ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
             </button>
           </div>
+        </div>
+      )}
+
+      {reportState && reportState !== 'capturing' && (
+        <div style={{ display: reportState === 'hidden' ? 'none' : 'block' }}>
+          <ReportModal
+            page={page}
+            initialDescription={reportPrefill}
+            initialCategory="bug"
+            initialScreenshot={reportScreenshot}
+            onClose={fullyClose => setReportState(fullyClose ? null : 'hidden')}
+            onSubmitted={() => {}}
+          />
         </div>
       )}
     </>

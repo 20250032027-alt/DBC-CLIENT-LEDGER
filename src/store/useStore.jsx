@@ -656,6 +656,51 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     await refreshFromLocal()
   }
 
+  // ---- Report a Problem ----
+  // Goes straight to Supabase, not through the offline queue — same
+  // reasoning as voucher attachments: uploading a screenshot needs a
+  // real connection anyway, and a report the admin can't see yet because
+  // it's still waiting to sync offline isn't very useful as a report.
+  const [myReports, setMyReports] = useState([])
+
+  async function loadMyReports() {
+    if (!userId) return
+    const { data, error: err } = await supabase
+      .from('reports')
+      .select('id, category, description, page, status, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (!err && data) setMyReports(data)
+  }
+
+  async function submitReport({ description, category, selectedText, page, screenshotFile }) {
+    let screenshotPath = null
+    if (screenshotFile) {
+      const path = `${userId}/${crypto.randomUUID()}.jpg`
+      const { error: upErr } = await supabase.storage.from('report-screenshots').upload(path, screenshotFile)
+      if (upErr) throw upErr
+      screenshotPath = path
+    }
+
+    const screenInfo = `${window.innerWidth}x${window.innerHeight} · ${navigator.userAgent}`
+
+    const { error: err } = await supabase.from('reports').insert({
+      user_id: userId,
+      company: settings?.company || null,
+      email: userEmail || null,
+      page: page || null,
+      category: category || 'bug',
+      description,
+      selected_text: selectedText || null,
+      screenshot_path: screenshotPath,
+      screen_info: screenInfo,
+      status: 'new',
+    })
+    if (err) throw err
+    await loadMyReports()
+  }
+
   // ---- Accounts (Chart of Accounts) ----
   async function addAccount(account) {
     const id = crypto.randomUUID()
@@ -742,6 +787,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       products, assemblyItems,
       productionEntries,
       invoices, invoiceItems,
+      myReports,
       syncStatus, pending, conflicts, clearConflicts,
       clearError: () => setError(null),
       refresh,
@@ -758,6 +804,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       addProduct, updateProduct, deleteProduct, saveAssemblyRecipe,
       addProductionEntry, updateProductionEntry, deleteProductionEntry,
       addSalesInvoice, updateSalesInvoice, deleteSalesInvoice,
+      submitReport, loadMyReports,
       updateSettings, deleteAllData,
     }}>
       {children}

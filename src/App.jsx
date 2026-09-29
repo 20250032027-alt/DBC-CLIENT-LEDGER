@@ -7,6 +7,8 @@ import TutorialNudge from './components/TutorialNudge.jsx'
 import TutorialMenu from './components/TutorialMenu.jsx'
 import TutorialSpotlight from './components/TutorialSpotlight.jsx'
 import TutorialSandboxVoucher from './components/TutorialSandboxVoucher.jsx'
+import ReportButton from './components/ReportButton.jsx'
+import ReportSelectionPill from './components/ReportSelectionPill.jsx'
 import { getInstallState, promptInstall } from './lib/installPrompt'
 import { StoreProvider, useStore } from './store/useStore.jsx'
 import { onToast, showToast } from './lib/toast'
@@ -35,6 +37,7 @@ import {
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
   FileBarChart, FileCheck, Percent, Package, Layers, Factory, ShoppingCart, PanelLeft, PanelLeftClose,
+  ChevronDown, ChevronRight, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera,
 } from 'lucide-react'
 import { verifySecret } from './utils'
 
@@ -529,6 +532,13 @@ function AppShell({ userEmail, bypassApprovalGate }) {
 
         {!bypassApprovalGate && (
           <>
+            <ReportButton page={page} />
+            <ReportSelectionPill page={page} />
+          </>
+        )}
+
+        {!bypassApprovalGate && (
+          <>
             <TutorialNudge />
             <TutorialMenu visibleSegmentIds={visibleSegmentIds} />
             <TutorialSpotlight />
@@ -575,6 +585,9 @@ function AdminConsole({ onView }) {
   const [error, setError] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [reports, setReports] = useState(null)
+  const [reportFilter, setReportFilter] = useState('open') // 'open' | 'all'
+  const [expandedReportId, setExpandedReportId] = useState(null)
 
   async function load() {
     setError(null)
@@ -586,18 +599,27 @@ function AdminConsole({ onView }) {
     else setRows(data)
   }
 
+  async function loadReports() {
+    const { data, error: err } = await supabase
+      .from('reports')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (!err) setReports(data)
+  }
+
   useEffect(() => {
     load()
+    loadReports()
     // New signups can take a moment to actually reach the cloud — poll
     // periodically so a pending account shows up without needing a manual
-    // page reload to notice it.
-    const interval = setInterval(load, 20000)
+    // page reload to notice it. Same reasoning applies to new reports.
+    const interval = setInterval(() => { load(); loadReports() }, 20000)
     return () => clearInterval(interval)
   }, [])
 
   async function handleRefresh() {
     setRefreshing(true)
-    await load()
+    await Promise.all([load(), loadReports()])
     setRefreshing(false)
   }
 
@@ -609,8 +631,22 @@ function AdminConsole({ onView }) {
     setBusyId(null)
   }
 
+  async function setReportStatus(id, status) {
+    const { error: err } = await supabase.from('reports').update({ status }).eq('id', id)
+    if (err) showToast(err.message, 'error')
+    await loadReports()
+  }
+
+  async function viewScreenshot(path) {
+    const { data, error: err } = await supabase.storage.from('report-screenshots').createSignedUrl(path, 3600)
+    if (err) { showToast('Could not open that screenshot.', 'error'); return }
+    window.open(data.signedUrl, '_blank', 'noopener')
+  }
+
   const pending = (rows || []).filter(r => !r.approved)
   const approved = (rows || []).filter(r => r.approved)
+  const visibleReports = (reports || []).filter(r => reportFilter === 'all' || r.status !== 'resolved')
+  const openReportCount = (reports || []).filter(r => r.status !== 'resolved').length
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', padding: '32px 24px' }}>
@@ -676,6 +712,72 @@ function AdminConsole({ onView }) {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="card" style={{ marginTop: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                <div className="card-title">
+                  Reports {openReportCount > 0 && <span className="badge badge-amber" style={{ marginLeft: 6 }}>{openReportCount}</span>}
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-ghost btn-sm" style={{ background: reportFilter === 'open' ? 'var(--accent-glow)' : undefined }} onClick={() => setReportFilter('open')}>Open</button>
+                  <button className="btn btn-ghost btn-sm" style={{ background: reportFilter === 'all' ? 'var(--accent-glow)' : undefined }} onClick={() => setReportFilter('all')}>All</button>
+                </div>
+              </div>
+
+              {visibleReports.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Nothing here.</div>
+              ) : visibleReports.map(r => {
+                const CategoryIcon = { bug: Bug, confusing: HelpCircle, suggestion: Lightbulb, other: MoreHorizontal }[r.category] || MoreHorizontal
+                const statusColor = { new: 'badge-amber', seen: 'badge-blue', resolved: 'badge-green' }[r.status] || 'badge-gray'
+                const isExpanded = expandedReportId === r.id
+                return (
+                  <div key={r.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }} onClick={() => setExpandedReportId(isExpanded ? null : r.id)}>
+                      <button className="icon-btn" style={{ flexShrink: 0 }}>{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
+                      <CategoryIcon size={14} style={{ marginTop: 3, flexShrink: 0, color: 'var(--text-3)' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isExpanded ? 'normal' : 'nowrap' }}>
+                          {r.description}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                          {r.company || r.email || 'Unknown'} · {r.page || 'unknown page'} · {new Date(r.created_at).toLocaleString('en-PH')}
+                        </div>
+                      </div>
+                      <span className={`badge ${statusColor}`} style={{ flexShrink: 0 }}>{{ new: 'New', seen: 'Seen', resolved: 'Resolved' }[r.status] || r.status}</span>
+                    </div>
+
+                    {isExpanded && (
+                      <div style={{ marginTop: 10, marginLeft: 36, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {r.selected_text && (
+                          <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-2)', background: 'var(--surface2)', padding: '8px 10px', borderRadius: 'var(--radius-sm)' }}>
+                            Selected text: "{r.selected_text}"
+                          </div>
+                        )}
+                        {r.screen_info && (
+                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{r.screen_info}</div>
+                        )}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {r.screenshot_path && (
+                            <button className="btn btn-ghost btn-sm" onClick={() => viewScreenshot(r.screenshot_path)}>
+                              <Camera size={13} /> View Screenshot
+                            </button>
+                          )}
+                          {r.status !== 'seen' && (
+                            <button className="btn btn-ghost btn-sm" onClick={() => setReportStatus(r.id, 'seen')}>Mark Seen</button>
+                          )}
+                          {r.status !== 'resolved' && (
+                            <button className="btn btn-primary btn-sm" onClick={() => setReportStatus(r.id, 'resolved')}>Mark Resolved</button>
+                          )}
+                          {r.status === 'resolved' && (
+                            <button className="btn btn-ghost btn-sm" onClick={() => setReportStatus(r.id, 'new')}>Reopen</button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </>
         )}
