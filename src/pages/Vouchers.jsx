@@ -186,8 +186,6 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     const cashAmount = parseFloat(get(idx.cash))
     const ref = String(get(idx.ref) || '').trim()
     const payee = String(get(idx.payee) || '').trim()
-    const tin = String(get(idx.tin) || '').trim()
-    const address = String(get(idx.address) || '').trim()
     const clientNameRaw = String(get(idx.client) || '').trim()
     if (clientNameRaw) clientNames.add(clientNameRaw)
 
@@ -210,16 +208,18 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     const flagged = issues.length > 0
     if (flagged) flaggedCount++
 
-    const idBits = [payee, ref].filter(Boolean).join(' — ')
-    const baseDesc = idBits || `Row ${r + 1}`
-    const desc = flagged ? `⚠ ${issues.join('; ')} — ${baseDesc}` : baseDesc
-    const tinAddrNote = [tin && `TIN ${tin}`, address].filter(Boolean).join(' · ')
-    const fullDesc = tinAddrNote ? `${desc} (${tinAddrNote})` : desc
+    // The voucher description is just the payee — reference number, TIN,
+    // and address used to all get mashed in alongside it, which made for
+    // a cluttered, hard-to-read description on every imported line.
+    // Those other details are still in the original sheet if ever
+    // needed; they just don't belong jammed into this one field.
+    const fullDesc = payee || `Row ${r + 1}`
+    const issuesText = issues.join('; ')
 
     const line = (account, debit, credit) => ({
       account, description: fullDesc,
       debit: debit ? String(debit) : '', credit: credit ? String(credit) : '',
-      flagged, id: crypto.randomUUID(),
+      flagged, issuesText, id: crypto.randomUUID(),
     })
 
     // A blank account title means that side's entry is left out of the
@@ -364,7 +364,7 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
                       borderBottom: '1px solid var(--border)',
                     }}>
                       <span style={{ color: e.flagged ? 'var(--red)' : 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {e.account} — {e.description}
+                        {e.account} — {e.description}{e.flagged ? ` (${e.issuesText})` : ''}
                       </span>
                       <span className="td-mono" style={{ flexShrink: 0 }}>
                         {e.debit ? fmt(parseFloat(e.debit)) : ''}{e.credit ? fmt(parseFloat(e.credit)) : ''}
