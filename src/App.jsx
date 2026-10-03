@@ -37,7 +37,7 @@ import {
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
   FileBarChart, FileCheck, Percent, Package, Layers, Factory, ShoppingCart, PanelLeft, PanelLeftClose,
-  ChevronDown, ChevronRight, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera, Trash2,
+  ChevronDown, ChevronRight, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera, Trash2, HardDrive, Info,
 } from 'lucide-react'
 import { verifySecret } from './utils'
 
@@ -588,6 +588,10 @@ function AdminConsole({ onView }) {
   const [reports, setReports] = useState(null)
   const [screenshotUrls, setScreenshotUrls] = useState({})
   const [expandedReportId, setExpandedReportId] = useState(null)
+  const [storageStats, setStorageStats] = useState(null)
+  const [storageLoading, setStorageLoading] = useState(false)
+  const [fileLimitGb, setFileLimitGb] = useState(() => readStoredLimit('dbc-admin-file-limit-gb', 1))
+  const [dbLimitMb, setDbLimitMb] = useState(() => readStoredLimit('dbc-admin-db-limit-mb', 500))
 
   async function load() {
     setError(null)
@@ -644,13 +648,24 @@ function AdminConsole({ onView }) {
   useEffect(() => {
     load()
     loadReports()
+    loadStorageStats()
     // New signups can take a moment to actually reach the cloud — poll
     // periodically so a pending account shows up without needing a manual
     // page reload to notice it. Same reasoning applies to new reports,
     // and this is also what actually carries out the grace-period sweep.
+    // Storage stats are NOT in this poll — walking every file in every
+    // bucket is heavier than these other queries, so it loads once on
+    // open and otherwise only when asked to refresh.
     const interval = setInterval(() => { load(); loadReports() }, 20000)
     return () => clearInterval(interval)
   }, [])
+
+  function saveLimits(gb, mb) {
+    setFileLimitGb(gb)
+    setDbLimitMb(mb)
+    writeStoredLimit('dbc-admin-file-limit-gb', gb)
+    writeStoredLimit('dbc-admin-db-limit-mb', mb)
+  }
 
   async function handleRefresh() {
     setRefreshing(true)
@@ -691,6 +706,67 @@ function AdminConsole({ onView }) {
       showToast('Delete was blocked — the delete permission migration may not be applied yet.', 'error')
     }
     await loadReports()
+  }
+
+  // ---- Storage stats ----
+  const STORAGE_BUCKETS = ['voucher-attachments', 'report-screenshots']
+
+  function readStoredLimit(key, fallback) {
+    try { const v = localStorage.getItem(key); return v ? Number(v) : fallback } catch { return fallback }
+  }
+  function writeStoredLimit(key, value) {
+    try { localStorage.setItem(key, String(value)) } catch { /* ignore */ }
+  }
+
+  // Walks a bucket's folders recursively and sums file sizes — the
+  // buckets this app uses don't all nest the same way (attachments go
+  // userId/voucherId/file, screenshots go userId/file directly), so this
+  // can't assume a fixed depth; it just keeps descending into anything
+  // that isn't a file until it runs out of folders.
+  async function walkBucket(bucket, path = '') {
+    const { data, error: err } = await supabase.storage.from(bucket).list(path, { limit: 1000 })
+    if (err || !data) return []
+    const files = []
+    for (const entry of data) {
+      const entryPath = path ? `${path}/${entry.name}` : entry.name
+      if (entry.metadata && typeof entry.metadata.size === 'number') {
+        files.push({ bucket, path: entryPath, name: entry.name, size: entry.metadata.size })
+      } else {
+        files.push(...await walkBucket(bucket, entryPath))
+      }
+    }
+    return files
+  }
+
+  async function loadStorageStats() {
+    setStorageLoading(true)
+    try {
+      const [dbResult, ...bucketResults] = await Promise.all([
+        supabase.rpc('admin_database_size'),
+        ...STORAGE_BUCKETS.map(b => walkBucket(b)),
+      ])
+      const allFiles = bucketResults.flat()
+      const totalFileBytes = allFiles.reduce((sum, f) => sum + f.size, 0)
+      const biggest = [...allFiles].sort((a, b) => b.size - a.size).slice(0, 8)
+      setStorageStats({
+        dbBytes: dbResult.error ? null : Number(dbResult.data),
+        fileBytes: totalFileBytes,
+        fileCount: allFiles.length,
+        biggest,
+      })
+    } catch (e) {
+      console.error('storage stats error:', e)
+    } finally {
+      setStorageLoading(false)
+    }
+  }
+
+  function fmtBytes(bytes) {
+    if (bytes == null) return '—'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
   }
 
   const pending = (rows || []).filter(r => !r.approved)
@@ -843,6 +919,102 @@ function AdminConsole({ onView }) {
                   </div>
                 )
               })}
+            </div>
+
+            <div className="card" style={{ marginTop: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <HardDrive size={16} /> Storage
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={loadStorageStats} disabled={storageLoading}>
+                  <RefreshCw size={13} className={storageLoading ? 'spin' : ''} /> Refresh
+                </button>
+              </div>
+
+              {(() => {
+                const fileLimitBytes = fileLimitGb * 1024 * 1024 * 1024
+                const dbLimitBytes = dbLimitMb * 1024 * 1024
+                const filePct = storageStats ? Math.min(100, (storageStats.fileBytes / fileLimitBytes) * 100) : 0
+                const dbPct = storageStats && storageStats.dbBytes != null ? Math.min(100, (storageStats.dbBytes / dbLimitBytes) * 100) : 0
+                const filesNearLimit = filePct >= 80
+                const dbNearLimit = dbPct >= 80
+                return (
+                  <>
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 5 }}>
+                        <span style={{ fontWeight: 600 }}>File storage</span>
+                        <span style={{ color: filesNearLimit ? 'var(--red)' : 'var(--text-3)' }}>
+                          {fmtBytes(storageStats?.fileBytes)} of {fileLimitGb} GB · {filePct.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 99, background: 'var(--surface2)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${filePct}%`, background: filesNearLimit ? 'var(--red)' : 'var(--accent)', transition: 'width 0.3s ease' }} />
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                        {storageStats ? `${storageStats.fileCount} file${storageStats.fileCount !== 1 ? 's' : ''} across voucher attachments and report screenshots` : 'Loading…'}
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 5 }}>
+                        <span style={{ fontWeight: 600 }}>Database</span>
+                        <span style={{ color: dbNearLimit ? 'var(--red)' : 'var(--text-3)' }}>
+                          {fmtBytes(storageStats?.dbBytes)} of {dbLimitMb} MB · {dbPct.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 99, background: 'var(--surface2)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${dbPct}%`, background: dbNearLimit ? 'var(--red)' : 'var(--accent)', transition: 'width 0.3s ease' }} />
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                        Includes every table across every client — vouchers, accounts, reports, everything.
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Your file storage limit (GB)</label>
+                  <input className="form-input" type="number" value={fileLimitGb} onChange={e => saveLimits(Number(e.target.value) || 0, dbLimitMb)} />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Your database limit (MB)</label>
+                  <input className="form-input" type="number" value={dbLimitMb} onChange={e => saveLimits(fileLimitGb, Number(e.target.value) || 0)} />
+                </div>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.5 }}>
+                Supabase doesn't tell the app which plan it's on — type in your real plan's limits here so the bars
+                above are accurate. Free tier: 1 GB storage, 500 MB database. Pro tier: 100 GB storage, 8,000 MB database.
+              </div>
+
+              {storageStats?.biggest?.length > 0 && (
+                <div style={{ marginTop: 18 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', marginBottom: 8 }}>BIGGEST FILES</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {storageStats.biggest.map(f => (
+                      <div key={f.path} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 10 }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-2)' }}>
+                          {f.bucket === 'voucher-attachments' ? 'Attachment' : 'Screenshot'} · {f.name}
+                        </span>
+                        <span style={{ flexShrink: 0, color: 'var(--text-3)' }}>{fmtBytes(f.size)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 18, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 'var(--radius-sm)' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Info size={13} /> Ways to make room
+                </div>
+                <ul style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.7, margin: 0, paddingLeft: 18 }}>
+                  <li>Receipt and screenshot compression is already on by default — scans and photos are by far the biggest files.</li>
+                  <li>Resolved reports auto-delete after 3 days, including their screenshots — nothing to clean up there manually.</li>
+                  <li>The Pro plan is about $25/month and includes 100 GB storage, 8,000 MB database, and no auto-pausing.</li>
+                  <li>A free-tier Supabase project pauses after a week of no activity — worth knowing if this sits unused for a while.</li>
+                </ul>
+              </div>
             </div>
           </>
         )}
