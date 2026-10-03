@@ -192,10 +192,14 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     if (clientNameRaw) clientNames.add(clientNameRaw)
 
     const issues = []
-    if (!accountDebit) issues.push('missing debit account')
-    else if (!accounts.find(a => a.name.trim().toLowerCase() === accountDebit.toLowerCase())) issues.push(`account "${accountDebit}" not in Chart of Accounts`)
-    if (!accountCredit) issues.push('missing credit account')
-    else if (!accounts.find(a => a.name.trim().toLowerCase() === accountCredit.toLowerCase())) issues.push(`account "${accountCredit}" not in Chart of Accounts`)
+    // A blank debit/credit account deliberately does NOT get flagged —
+    // it's expected to happen on real import sheets and shouldn't hold
+    // up posting. An account that WAS provided but doesn't match
+    // anything in the Chart of Accounts is different — that's much more
+    // likely a typo or a real mismatch, worth a human actually checking
+    // before it posts to the books.
+    if (accountDebit && !accounts.find(a => a.name.trim().toLowerCase() === accountDebit.toLowerCase())) issues.push(`account "${accountDebit}" not in Chart of Accounts`)
+    if (accountCredit && !accounts.find(a => a.name.trim().toLowerCase() === accountCredit.toLowerCase())) issues.push(`account "${accountCredit}" not in Chart of Accounts`)
     const safeDebit = Number.isFinite(debitAmount) && debitAmount > 0 ? debitAmount : 0
     const safeCash = Number.isFinite(cashAmount) && cashAmount > 0 ? cashAmount : 0
     if (!safeDebit) issues.push('missing/invalid Debit Amount')
@@ -218,14 +222,19 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
       flagged, id: crypto.randomUUID(),
     })
 
+    // A blank account title means that side's entry is left out of the
+    // voucher entirely — not filled with a placeholder. This can mean a
+    // row contributes only a debit, or only a credit, if that's what's
+    // on the sheet; the voucher doesn't force every row to balance on
+    // its own the way a normal manually-entered voucher would.
     if (isDisbursement) {
-      entries.push(line(accountDebit || '(unspecified account)', safeDebit, 0))
+      if (accountDebit) entries.push(line(accountDebit, safeDebit, 0))
       if (vatAmount > 0 && taxAccountName) entries.push(line(taxAccountName, 0, vatAmount))
-      entries.push(line(accountCredit || '(unspecified account)', 0, safeCash))
+      if (accountCredit) entries.push(line(accountCredit, 0, safeCash))
     } else {
-      entries.push(line(accountDebit || '(unspecified account)', safeCash, 0))
+      if (accountDebit) entries.push(line(accountDebit, safeCash, 0))
       if (vatAmount > 0 && taxAccountName) entries.push(line(taxAccountName, vatAmount, 0))
-      entries.push(line(accountCredit || '(unspecified account)', 0, safeDebit))
+      if (accountCredit) entries.push(line(accountCredit, 0, safeDebit))
     }
   }
 
@@ -260,11 +269,12 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
     setImporting(true)
     const date = new Date().toISOString().slice(0, 10)
     const number = nextVoucherNumber(journalType, date, vouchers)
+    const willPost = parsed.flaggedCount === 0
     const memo = `Bulk import — ${parsed.rowCount} row${parsed.rowCount !== 1 ? 's' : ''}` +
       (parsed.flaggedCount ? `, ${parsed.flaggedCount} flagged for review` : '') +
       (parsed.clientNote ? `. ${parsed.clientNote}` : '')
     await onImport({
-      type: journalType, date, number, posted: false,
+      type: journalType, date, number, posted: willPost,
       reference: '', memo, payee: '', payeeTin: '', payeeAddress: '', clientId: '',
       entries: parsed.entries,
     })
@@ -283,16 +293,29 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
         {createdNumber !== null ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <CheckCircle size={32} style={{ color: 'var(--green)', marginBottom: 10 }} />
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Draft voucher {createdNumber} created</div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6 }}>
-              It's marked DRAFT and won't affect your reports until you review it and click Post.
-            </div>
+            {parsed?.flaggedCount === 0 ? (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Voucher {createdNumber} created and posted</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6 }}>
+                  Nothing was flagged, so it went straight into your reports.
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Draft voucher {createdNumber} created</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6 }}>
+                  Some rows were flagged, so it's marked DRAFT and won't affect your reports until you review it and click Post.
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
-              Every row in the sheet becomes lines inside <strong>one draft voucher</strong> — nothing gets
-              rejected. Rows with a problem (unknown account, missing amount, etc.) are still included,
+              Every row in the sheet becomes lines inside one voucher — nothing gets
+              rejected. A blank account title is fine: that side just isn't added as a line, no
+              warning. Rows with a real problem (an account name that doesn't match anything in
+              your Chart of Accounts, an amount that doesn't add up, etc.) are still included,
               just flagged in red with a remark, so you can review and fix them before posting.
             </div>
 
@@ -361,7 +384,7 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
             <>
               <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
               <button className="btn btn-primary" disabled={!parsed?.entries?.length || importing} onClick={handleImport}>
-                {importing ? 'Creating…' : 'Create Draft Voucher'}
+                {importing ? 'Creating…' : parsed?.flaggedCount === 0 ? 'Create & Post Voucher' : 'Create Draft Voucher'}
               </button>
             </>
           )}
@@ -1524,10 +1547,15 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
   }
 
   async function handleAttachmentView(attachment) {
+    // Same fix as the admin's report screenshot viewer: open the tab
+    // synchronously, before the async URL fetch, so it isn't silently
+    // blocked as a popup for happening "too late" after the click.
+    const tab = window.open('', '_blank', 'noopener')
     try {
       const url = await getVoucherAttachmentUrl(attachment.path)
-      window.open(url, '_blank', 'noopener')
+      if (tab) tab.location.href = url
     } catch (err) {
+      tab?.close()
       showToast('Could not open that file — check your connection and try again.', 'error')
     }
   }
