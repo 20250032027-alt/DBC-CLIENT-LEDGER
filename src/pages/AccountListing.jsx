@@ -42,7 +42,7 @@ async function exportToExcel(accountSections, currency, dateFrom, dateTo) {
         Type: '',
         Date: e.rawDate || e.date,
         'Voucher #': e.voucherNumber,
-        'Memo / Description': e.memo || e.description || '',
+        'Memo / Description': e.description || e.memo || '',
         Debit: e.debit > 0 ? e.debit : '',
         Credit: e.credit > 0 ? e.credit : '',
         Balance: running,
@@ -163,7 +163,7 @@ function AccountSection({ account, entries, closingBalance, currency }) {
                     <td className="td-mono" style={{ fontWeight: 600 }}>{e.voucherNumber}</td>
                     <td style={{ color: 'var(--text-2)', maxWidth: 260 }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {e.memo || e.description || '—'}
+                        {e.description || e.memo || '—'}
                       </div>
                     </td>
                     <td className="td-mono" style={{ textAlign: 'right' }}>
