@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { MessageCircleQuestion, X, Send, Loader2, Flag } from 'lucide-react'
+import { MessageCircleQuestion, X, Send, Loader2, Flag, Zap, Sparkles } from 'lucide-react'
 import { supabase, supabaseUrl } from '../lib/supabase'
 import { useStore } from '../store/useStore.jsx'
 import { buildDataSummary } from '../utils'
 import { showToast } from '../lib/toast'
 import { captureScreenshot } from '../lib/screenshot'
 import ReportModal from './ReportModal.jsx'
+import { findInstantAnswer } from '../lib/helpFaq'
 
 // ── Minimal markdown rendering — no new dependency ──
 // The model's answers use a small, predictable set of formatting: **bold**,
@@ -117,7 +118,7 @@ const TEAM_PAGES = [
 export default function HelpChatWidget({ page, activeMember }) {
   const { vouchers, clients, bills, accounts, settings } = useStore()
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState([]) // [{ role: 'user'|'model'|'error', text, detail? }]
+  const [messages, setMessages] = useState([]) // [{ role: 'user'|'model'|'error', text, detail?, instant? }]
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [reportState, setReportState] = useState(null) // null | 'capturing' | 'hidden' | 'open'
@@ -132,8 +133,28 @@ export default function HelpChatWidget({ page, activeMember }) {
   async function send() {
     const text = input.trim()
     if (!text || streaming) return
+    setInput('')
+    const withQuestion = [...messages, { role: 'user', text }]
 
-    const nextMessages = [...messages, { role: 'user', text }]
+    // Common "how do I…" questions are answered instantly, right here,
+    // without spending any free AI quota. Anything about the person's own
+    // numbers is never answered this way (see helpFaq.js).
+    const instant = findInstantAnswer(text)
+    if (instant) {
+      setMessages([...withQuestion, { role: 'model', text: instant.answer, instant: true }])
+      return
+    }
+    await askAI(withQuestion)
+  }
+
+  // "Not what you meant? Ask the AI" — drops the instant answer and sends
+  // the same question to the AI instead.
+  function askAIInstead(instantIndex) {
+    if (streaming) return
+    askAI(messages.slice(0, instantIndex))
+  }
+
+  async function askAI(nextMessages) {
     // Placeholder goes in immediately, before anything async — this is what
     // makes ThinkingDots show up. It used to get added only after the
     // fetch resolved, which meant total silence (no dots, no feedback at
@@ -142,7 +163,6 @@ export default function HelpChatWidget({ page, activeMember }) {
     // back, the placeholder never appeared at all — from the outside that
     // looks exactly like "nothing happened."
     setMessages([...nextMessages, { role: 'model', text: '' }])
-    setInput('')
     setStreaming(true)
 
     try {
@@ -164,7 +184,14 @@ export default function HelpChatWidget({ page, activeMember }) {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ messages: nextMessages, dataSummaryText }),
+        // Only real conversation turns go to the AI. Error notices are a
+        // UI-only part of this chat, and an unknown "error" role makes AI
+        // providers reject the whole request — so one error used to break
+        // every later question in the same chat.
+        body: JSON.stringify({
+          messages: nextMessages.filter(m => (m.role === 'user' || m.role === 'model') && m.text),
+          dataSummaryText,
+        }),
       })
 
       if (!res.ok) {
@@ -294,6 +321,23 @@ export default function HelpChatWidget({ page, activeMember }) {
                   animation: 'message-in 0.2s ease',
                 }}>
                   {isLastAndEmpty ? <ThinkingDots /> : (m.role === 'model' ? renderMarkdownLite(m.text) : m.text)}
+                  {m.instant && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8, paddingTop: 7, borderTop: '1px solid var(--border)' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-3)' }}>
+                        <Zap size={11} /> Instant answer
+                      </span>
+                      {i === messages.length - 1 && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 11.5, padding: '3px 9px', marginLeft: 'auto' }}
+                          onClick={() => askAIInstead(i)}
+                          disabled={streaming}
+                        >
+                          <Sparkles size={12} /> Not what you meant? Ask the AI
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}

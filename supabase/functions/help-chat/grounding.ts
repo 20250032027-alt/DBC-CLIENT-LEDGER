@@ -62,6 +62,26 @@ the one concept almost every question eventually comes back to.
 - **Deleting** a voucher requires typing the exact voucher number to
   confirm, plus the password if one's set — this is deliberately friction-y
   to prevent accidental deletion of financial records
+- A voucher dated inside a **closed accounting period** (see Closing Books)
+  shows a lock icon instead of edit/delete, and can't be added, edited,
+  deleted, or posted until that period is reopened
+
+## Bulk Import (Vouchers page)
+- The **Bulk Import** button on the Vouchers page brings in many
+  transactions from an Excel sheet at once. A **Download … Journal
+  Template** button gives the correct format for the chosen journal type
+- Every row in the sheet becomes lines inside **one voucher** — nothing is
+  rejected
+- If a row's debit or credit **account column is blank**, that side is
+  simply not included as a line — no warning. (A row with only one side
+  won't balance on its own; that's expected — the sheet is meant to balance
+  as a whole.)
+- Rows with a real problem — an account name that doesn't match anything
+  in the Chart of Accounts, or amounts that don't add up — are still
+  included but **flagged in red** in the preview with a remark
+- If anything is flagged, the voucher is saved as a **Draft** for review.
+  If nothing is flagged, it's **posted** immediately
+- Each line's description is the **payee** only
 
 # Chart of Accounts
 
@@ -78,6 +98,10 @@ that vouchers post to.
   new ones — this never touches or removes anything already there,
   including accounts the user renamed or added themselves
 - Accounts can also be added one at a time manually at any point
+
+- If the chart is empty, a **Use Starter Chart of Accounts** button sets
+  up a standard list. Otherwise, **New Account** adds one (name, code, and
+  type: Asset, Liability, Equity, Revenue, or Expense)
 
 # Clients
 
@@ -107,6 +131,26 @@ vouchers.
 ## Dashboard
 The landing page — revenue vs. expenses chart, recent invoices, recent
 vouchers, and an overall summary at a glance.
+
+# Closing Books (Accounting section of the sidebar)
+
+Formally closes an accounting period with real closing entries:
+- Pick a **Close through** date (not in the future) and the **equity
+  account** that receives the net result (e.g. Retained Earnings or
+  Owner's Capital — the dropdown only lists Equity accounts; if there are
+  none, one must be added in Chart of Accounts first)
+- **Preview Closing Entry** shows each Revenue and Expense account that
+  will be zeroed out and the resulting net income or net loss
+- **Close & Lock Period** posts a General Journal closing voucher that
+  zeroes Revenue and Expense into the chosen equity account, then locks
+  every voucher in that period — nothing in it can be added, edited,
+  deleted, or posted. Only posted vouchers count; drafts are ignored
+- Periods chain: each new closing starts the day after the previous one
+  ended. The first closing covers everything up to its date
+- **Reopening**: in Closing History, the most recent closing has a
+  **Reopen This Period** button (only the most recent — later ones must be
+  reopened first). Reopening deletes that closing voucher and unlocks the
+  period; it can be closed again afterward
 
 # Tax Features
 
@@ -205,6 +249,12 @@ adds to it in this app; there's no automatic stock deduction on a sale.
 
 - **Company Details** — company name, address, TIN, logo
 - **Tax Scheme** — VAT vs. Percentage Tax and their rates, see above
+- **Appearance** — saved per device: Light/Dark mode (plus a True Black
+  dark option), High Contrast, Density (Compact, Standard, or Comfortable
+  for bigger text and spacing), accent color, and collapsing the sidebar
+  to icons
+- **Tutorial** — "Open Tutorial" starts a hands-on walkthrough; pick any
+  part in any order. Its practice parts never touch real data
 - **Account** — the logged-in email, sign out
 - **Install App** — installing this as a Progressive Web App (PWA) on a
   phone or desktop for app-like access
@@ -242,6 +292,25 @@ account-wide setting, not per Team Member — it's about whether the AI
 itself sees real figures, separate from which team member can see what
 in the app (that's Team Members, above). If this is turned off, decline
 to state or guess any peso figures and mention where to turn it back on.
+
+# Reporting a Problem
+
+- A **flag button** sits in the bottom-right corner next to this chat
+  bubble, and **highlighting any text** on a page shows a "Report this"
+  pill. Either opens the report form
+- The form asks what kind of thing it is (something broken, confusing, a
+  suggestion, other) and what's going on. A screenshot of the page is
+  attached automatically — it can be retaken, swapped for an uploaded
+  image, or removed
+- Reports go to the app's administrator. The form shows the status of
+  the person's own recent reports (New, Seen, Resolved)
+
+# Working Offline
+
+The app works offline: changes are saved on the device and sync
+automatically when back online, and the indicator at the top right shows
+how many are still waiting. The exception is attaching files to a
+voucher, which needs a live connection.
 
 # What this assistant should NOT do
 
