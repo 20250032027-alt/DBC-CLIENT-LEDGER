@@ -1,9 +1,16 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret } from '../utils'
-import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink } from 'lucide-react'
+import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink, Lock } from 'lucide-react'
 import { showToast } from '../lib/toast'
 import { compressAttachment } from '../lib/compressAttachment'
+
+// Today in the user's own timezone (toISOString alone gives the UTC date,
+// which is still "yesterday" in the Philippines until 8 AM).
+function localDateStr() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 const TYPES = ['sales', 'general', 'cash receipt', 'cash disbursement', 'expense', 'adjustment']
 
@@ -2053,7 +2060,7 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
 export default function Vouchers() {
   const {
     vouchers, addVoucher, updateVoucher, deleteVoucher, clients, accounts, templates, addTemplate, deleteTemplate, settings,
-    uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment,
+    uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment, isDateLocked,
   } = useStore()
   const [modal, setModal] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -2237,14 +2244,29 @@ export default function Vouchers() {
                       <td className="td-mono" style={{ textAlign: 'right' }}>{fmt(credit, settings.currency)}</td>
                       <td>
                         <div className="row-actions">
-                          {v.posted === false && (
-                            <button className="icon-btn" title="Post this voucher — includes it in reports" onClick={() => setPostTarget(v)} style={{ color: 'var(--green)' }}>
-                              <CheckCircle size={14} />
-                            </button>
-                          )}
-                          <button className="icon-btn" title="Print Voucher" onClick={() => printVoucher(v, settings, accounts, clients)}><Printer size={14} /></button>
-                          <button className="icon-btn" onClick={() => setModal(v)}><Pencil size={14} /></button>
-                          <button className="icon-btn" onClick={() => setDeleteTarget(v)} style={{ color: 'var(--red)' }}><Trash2 size={14} /></button>
+                          {(() => {
+                            const locked = isDateLocked(v.date || (v.createdAt || '').slice(0, 10))
+                            return (
+                              <>
+                                {v.posted === false && !locked && (
+                                  <button className="icon-btn" title="Post this voucher — includes it in reports" onClick={() => setPostTarget(v)} style={{ color: 'var(--green)' }}>
+                                    <CheckCircle size={14} />
+                                  </button>
+                                )}
+                                <button className="icon-btn" title="Print Voucher" onClick={() => printVoucher(v, settings, accounts, clients)}><Printer size={14} /></button>
+                                {locked ? (
+                                  <span className="icon-btn" title="In a closed period — reopen it in Closing Books to edit" style={{ cursor: 'default', color: 'var(--text-3)' }}>
+                                    <Lock size={14} />
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button className="icon-btn" onClick={() => setModal(v)}><Pencil size={14} /></button>
+                                    <button className="icon-btn" onClick={() => setDeleteTarget(v)} style={{ color: 'var(--red)' }}><Trash2 size={14} /></button>
+                                  </>
+                                )}
+                              </>
+                            )
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -2292,6 +2314,14 @@ export default function Vouchers() {
           onDeleteTemplate={deleteTemplate}
           onClose={() => setModal(null)}
           onSave={form => {
+            // Checked here, before the modal closes, so someone who typed a
+            // back-dated voucher into a closed period gets told why and
+            // keeps their work, instead of the form vanishing while the
+            // store quietly refuses the write.
+            if (isDateLocked(form.date || localDateStr())) {
+              showToast('That date is in a closed accounting period. Pick a later date, or reopen the period in Closing Books.', 'error', 6000)
+              return
+            }
             const withNumber = form.number ? form : { ...form, number: nextVoucherNumber(form.type, form.date, vouchers) }
             if (modal === 'new') addVoucher(withNumber)
             else updateVoucher(modal.id, withNumber)

@@ -64,6 +64,14 @@ db.version(7).stores({
   invoiceItems: 'id, userId, updatedAt, _dirty',
 })
 
+// v8: Closing Books — a record of each time a period got formally
+// closed (which vouchers posted the closing entries, which equity
+// account absorbed the result). Same shape, same offline behavior as
+// everything else.
+db.version(8).stores({
+  periodClosings: 'id, userId, updatedAt, _dirty',
+})
+
 export async function clearLocalDb() {
   await Promise.all(db.tables.map(t => t.clear()))
 }

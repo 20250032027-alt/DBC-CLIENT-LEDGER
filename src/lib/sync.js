@@ -20,6 +20,7 @@ const TABLES = {
   productionEntries: { remote: 'production_entries', pk: 'id', toDb },
   invoices: { remote: 'invoices', pk: 'id', toDb },
   invoiceItems: { remote: 'invoice_items', pk: 'id', toDb },
+  periodClosings: { remote: 'period_closings', pk: 'id', toDb },
 }
 
 let syncing = false

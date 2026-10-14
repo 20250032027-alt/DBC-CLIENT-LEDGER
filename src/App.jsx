@@ -20,6 +20,7 @@ import ChartOfAccounts from './pages/ChartOfAccounts'
 import TrialBalance from './pages/TrialBalance'
 import AccountListing from './pages/AccountListing'
 import CashFlow from './pages/CashFlow'
+import ClosingBooks from './pages/ClosingBooks'
 import FinancialCondition from './pages/FinancialCondition'
 import TaxReport from './pages/TaxReport'
 import TaxReturn from './pages/TaxReturn'
@@ -37,7 +38,7 @@ import {
   BookOpen, BookText, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
   FileBarChart, FileCheck, Percent, Package, Layers, Factory, ShoppingCart, PanelLeft, PanelLeftClose,
-  ChevronDown, ChevronRight, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera, Trash2, HardDrive, Info,
+  ChevronDown, ChevronRight, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera, Trash2, HardDrive, Info, Lock,
 } from 'lucide-react'
 import { verifySecret } from './utils'
 
@@ -49,6 +50,7 @@ const NAV = [
   { id: 'trial-balance', label: 'Trial Balance', icon: Scale },
   { id: 'account-listing', label: 'Account Listing', icon: BookOpen },
   { id: 'cash-flow', label: 'Cash Flow', icon: Waves },
+  { id: 'closing-books', label: 'Closing Books', icon: Lock },
   { id: 'financial', label: 'Financial Reports', icon: BarChart3 },
   { id: 'tax-report', label: 'Tax Report', icon: FileBarChart },
   { id: 'tax-return', label: 'Tax Return', icon: FileCheck },
@@ -64,6 +66,7 @@ const NAV = [
 const PAGE_TITLES = {
   dashboard: 'Dashboard', clients: 'Clients', vouchers: 'Vouchers',
   accounts: 'Chart of Accounts', 'trial-balance': 'Trial Balance', 'account-listing': 'Account Listing', 'cash-flow': 'Cash Flow',
+  'closing-books': 'Closing Books',
   financial: 'Financial Reports', 'tax-report': 'Tax Report', 'tax-return': 'Tax Return', 'ewt-report': 'EWT Report', billing: 'Billing',
   'raw-materials': 'Raw Materials', assembly: 'Product Assembly', production: 'Production', sales: 'Sales', settings: 'Settings',
 }
@@ -71,6 +74,7 @@ const PAGE_TITLES = {
 const PAGES = {
   dashboard: Dashboard, clients: Clients, vouchers: Vouchers,
   accounts: ChartOfAccounts, 'trial-balance': TrialBalance, 'account-listing': AccountListing, 'cash-flow': CashFlow,
+  'closing-books': ClosingBooks,
   financial: FinancialCondition, 'tax-report': TaxReport, 'tax-return': TaxReturn, 'ewt-report': EWTReport, billing: Billing,
   'raw-materials': RawMaterials, assembly: Assembly, production: Production, sales: Sales, settings: Settings,
 }
@@ -419,19 +423,19 @@ function AppShell({ userEmail, bypassApprovalGate }) {
             </div>
           ))}
           <div className="nav-section-label">Accounting</div>
-          {NAV.slice(2, 8).map(({ id, label, icon: Icon }) => (
+          {NAV.slice(2, 9).map(({ id, label, icon: Icon }) => (
             <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} data-tutorial={`nav-${id}`}>
               <Icon size={16} /><span>{label}</span>
             </div>
           ))}
           <div className="nav-section-label">Finance</div>
-          {NAV.slice(8, 9).map(({ id, label, icon: Icon }) => (
+          {NAV.slice(9, 10).map(({ id, label, icon: Icon }) => (
             <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} data-tutorial={`nav-${id}`}>
               <Icon size={16} /><span>{label}</span>
             </div>
           ))}
           <div className="nav-section-label">System</div>
-          {NAV.slice(9).map(({ id, label, icon: Icon }) => (
+          {NAV.slice(10).map(({ id, label, icon: Icon }) => (
             <div key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} data-tutorial={`nav-${id}`}>
               <Icon size={16} /><span>{label}</span>
             </div>

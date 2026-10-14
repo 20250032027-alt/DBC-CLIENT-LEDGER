@@ -20,6 +20,7 @@ const TEAM_PAGES = [
   { id: 'trial-balance', label: 'Trial Balance' },
   { id: 'account-listing', label: 'Account Listing' },
   { id: 'cash-flow', label: 'Cash Flow' },
+  { id: 'closing-books', label: 'Closing Books' },
   { id: 'financial', label: 'Financial Reports' },
   { id: 'tax-report', label: 'Tax Report' },
   { id: 'tax-return', label: 'Tax Return' },

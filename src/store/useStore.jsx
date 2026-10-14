@@ -60,6 +60,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   const [assemblyItems, setAssemblyItems] = useState([])
   const [productionEntries, setProductionEntries] = useState([])
   const [invoices, setInvoices] = useState([])
+  const [periodClosings, setPeriodClosings] = useState([])
   const [invoiceItems, setInvoiceItems] = useState([])
   const [settings, setSettings] = useState(defaultSettings)
   const [loading, setLoading] = useState(true)
@@ -69,7 +70,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   const [conflicts, setConflicts] = useState([])
 
   const refreshFromLocal = useCallback(async () => {
-    const [accData, cliData, vouData, billData, tplData, menuData, saleData, rmData, rmeData, prodData, asmData, peData, invData, iiData, setRow, conflictRows] = await Promise.all([
+    const [accData, cliData, vouData, billData, tplData, menuData, saleData, rmData, rmeData, prodData, asmData, peData, invData, iiData, pcData, setRow, conflictRows] = await Promise.all([
       liveRows('accounts'), liveRows('clients'), liveRows('vouchers'),
       liveRows('bills'), liveRows('templates'),
       liveRows('menuItems'), liveRows('posSales'),
@@ -77,6 +78,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       liveRows('products'), liveRows('assemblyItems'),
       liveRows('productionEntries'),
       liveRows('invoices'), liveRows('invoiceItems'),
+      liveRows('periodClosings'),
       userId ? db.settings.get(userId) : null,
       db.conflicts.orderBy('ts').reverse().limit(20).toArray(),
     ])
@@ -94,6 +96,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     setProductionEntries(peData)
     setInvoices(invData)
     setInvoiceItems(iiData)
+    setPeriodClosings(pcData)
     if (setRow) setSettings({ ...defaultSettings, ...setRow })
     setConflicts(conflictRows)
     setPending(await pendingCount())
@@ -225,6 +228,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   async function insertVoucherRecord(voucher, opts) {
     const id = crypto.randomUUID()
     const rec = { id, userId, createdAt: new Date().toISOString(), number: null, ...voucher }
+    if (blockedByClosing(voucherPeriodDate(rec))) return null
     await queueWrite('vouchers', 'insert', rec, opts)
     return id
   }
@@ -236,10 +240,15 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   async function updateVoucher(id, patch) {
     const existing = await db.vouchers.get(id)
     if (!existing) { fail(null, 'Could not update voucher'); return }
+    // Both dates checked — can't edit a voucher sitting in a closed
+    // period, and can't move an open voucher into one either.
+    if (blockedByClosing(voucherPeriodDate(existing)) || blockedByClosing(voucherPeriodDate({ ...existing, ...patch }))) return
     await queueWrite('vouchers', 'update', { ...existing, ...patch, id })
     await refreshFromLocal()
   }
   async function deleteVoucher(id) {
+    const existing = await db.vouchers.get(id)
+    if (existing && blockedByClosing(voucherPeriodDate(existing))) return
     await queueWrite('vouchers', 'delete', { id })
     await refreshFromLocal()
   }
@@ -300,6 +309,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   }
 
   async function addBill(bill) {
+    if (blockedByClosing(bill.date || new Date().toISOString().slice(0, 10))) return null
     const id = crypto.randomUUID()
     const rec = { id, userId, createdAt: new Date().toISOString(), number: null, status: 'unpaid', ...bill }
     await queueWrite('bills', 'insert', rec)
@@ -324,6 +334,8 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   async function updateBill(id, patch) {
     const existing = await db.bills.get(id)
     if (!existing) { fail(null, 'Could not update invoice'); return }
+    if (patch.status === 'paid' && existing.status !== 'paid' &&
+        blockedByClosing(patch.paidDate || new Date().toISOString().slice(0, 10))) return
     const updated = { ...existing, ...patch, id }
     await queueWrite('bills', 'update', updated)
 
@@ -377,6 +389,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   async function addPosSale(sale) {
     const id = crypto.randomUUID()
     const date = sale.date || new Date().toISOString().slice(0, 10)
+    if (blockedByClosing(date)) return null
     const number = nextPosSaleNumber(date, posSales)
 
     // The sale record is written BEFORE the voucher, deliberately — if
@@ -589,6 +602,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   async function addSalesInvoice(invoice, items) {
     const id = crypto.randomUUID()
     const date = invoice.date || new Date().toISOString().slice(0, 10)
+    if (blockedByClosing(date)) return null
     const total = items.reduce((s, it) => s + Number(it.amount || 0), 0)
 
     // Invoice and line items are written BEFORE the voucher, deliberately
@@ -647,6 +661,165 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       }
     }
     await refreshFromLocal()
+  }
+
+  // ---- Closing Books ----
+  // Done entirely client-side against the already-synced vouchers and
+  // accounts, same as every other report in this app (Trial Balance,
+  // Financial Reports, Cash Flow) — there's no server-side aggregation
+  // step to keep in sync with those.
+  // Which date a voucher "belongs to" for closing purposes — its own date,
+  // or its creation date if it was never given one. The database lock
+  // trigger (migration 021) uses this exact same rule, so what the app
+  // counts in a closing and what the database locks always agree.
+  function voucherPeriodDate(v) {
+    return v.date || (v.createdAt || '').slice(0, 10)
+  }
+
+  function computePeriodNetActivity(periodStart, closedThrough) {
+    const balances = {}
+    for (const v of vouchers) {
+      if (!v.posted) continue
+      const vDate = voucherPeriodDate(v)
+      if (!vDate || vDate > closedThrough) continue
+      if (periodStart && vDate < periodStart) continue
+      for (const e of (v.entries || [])) {
+        const acct = accounts.find(a => a.name === e.account)
+        if (!acct || (acct.type !== 'revenue' && acct.type !== 'expense')) continue
+        const debit = Number(e.debit) || 0
+        const credit = Number(e.credit) || 0
+        const delta = acct.type === 'revenue' ? (credit - debit) : (debit - credit)
+        balances[e.account] = (balances[e.account] || 0) + delta
+      }
+    }
+    return balances
+  }
+
+  // A new closing always starts the day after the latest open (not
+  // reopened) closing left off — so closings chain together instead of
+  // needing a fiscal-year setting this app doesn't otherwise have. The
+  // very first closing has no lower bound at all.
+  function nextPeriodStart() {
+    const open = periodClosings.filter(p => !p.reopened)
+    if (open.length === 0) return null
+    const latest = open.reduce((a, b) => (a.closedThrough > b.closedThrough ? a : b))
+    // Date math done in UTC on purpose. Doing it in local time and then
+    // calling toISOString() (which is UTC) shifts the result back a day
+    // in the Philippines (UTC+8) — the next period would start ON the
+    // previous period's last day, re-counting that day and its closing
+    // entries a second time.
+    const d = new Date(latest.closedThrough + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() + 1)
+    return d.toISOString().slice(0, 10)
+  }
+
+  async function closeBooks({ closedThrough, retainedEarningsAccount }) {
+    const openClosings = periodClosings.filter(p => !p.reopened)
+    if (openClosings.some(p => p.closedThrough >= closedThrough)) {
+      throw new Error('This date is before or equal to an existing closing. Pick a later date, or reopen that closing first.')
+    }
+    const periodStart = nextPeriodStart()
+    const balances = computePeriodNetActivity(periodStart, closedThrough)
+
+    // Every balance is rounded to the cent FIRST, and net income is built
+    // from those rounded figures — summing raw floats across hundreds of
+    // vouchers drifts (e.g. 1309.9599999999998), and a closing voucher
+    // has to balance to the exact centavo.
+    const cents = x => Math.round(x * 100) / 100
+    const entries = []
+    let netIncome = 0
+    for (const [accountName, rawBalance] of Object.entries(balances)) {
+      const balance = cents(rawBalance)
+      if (Math.abs(balance) < 0.01) continue
+      const acct = accounts.find(a => a.name === accountName)
+      if (acct.type === 'revenue') {
+        entries.push({ account: accountName, description: 'Closing entry', debit: String(balance), credit: '' })
+        netIncome += balance
+      } else {
+        entries.push({ account: accountName, description: 'Closing entry', debit: '', credit: String(balance) })
+        netIncome -= balance
+      }
+    }
+    if (entries.length === 0) {
+      throw new Error('Nothing to close — no posted revenue or expense activity in this period.')
+    }
+    netIncome = cents(netIncome)
+    if (Math.abs(netIncome) >= 0.01) {
+      if (netIncome > 0) {
+        entries.push({ account: retainedEarningsAccount, description: 'Net income for period', debit: '', credit: String(netIncome) })
+      } else {
+        entries.push({ account: retainedEarningsAccount, description: 'Net loss for period', debit: String(-netIncome), credit: '' })
+      }
+    }
+
+    const voucherId = await insertVoucherRecord({
+      type: 'general',
+      number: nextVoucherNumber('general', closedThrough, vouchers),
+      date: closedThrough,
+      posted: true,
+      reference: '', memo: `Closing entry through ${closedThrough}`, payee: '', payeeTin: '', payeeAddress: '', clientId: '',
+      entries,
+    }, { silent: true })
+    if (!voucherId) throw new Error('Could not post the closing voucher.')
+
+    const closingId = crypto.randomUUID()
+    await queueWrite('periodClosings', 'insert', {
+      id: closingId, userId, createdAt: new Date().toISOString(),
+      periodStart, closedThrough, retainedEarningsAccount, netIncome,
+      closingVoucherId: voucherId, reopened: false,
+    })
+    await refreshFromLocal()
+    return { netIncome, voucherId }
+  }
+
+  // Only the most recent open closing can be reopened — standard practice,
+  // and it keeps periods chained end-to-end instead of leaving a reopened
+  // hole in the middle with closed periods on either side of it.
+  function latestOpenClosingId() {
+    const open = periodClosings.filter(p => !p.reopened)
+    if (open.length === 0) return null
+    return open.reduce((a, b) => (a.closedThrough > b.closedThrough ? a : b)).id
+  }
+
+  async function reopenPeriod(closingId) {
+    const closing = periodClosings.find(p => p.id === closingId)
+    if (!closing) return
+    if (closingId !== latestOpenClosingId()) {
+      throw new Error('Only the most recent closing can be reopened. Reopen the later ones first.')
+    }
+    // Reopened is written FIRST — that's what lifts the database-level
+    // lock (migration 021's trigger), which then lets the very next step
+    // delete the closing voucher. Writes replay through the offline queue
+    // in the order they were made, so this ordering holds even if both
+    // are queued while offline.
+    await queueWrite('periodClosings', 'update', { ...closing, reopened: true, reopenedAt: new Date().toISOString() })
+    // The closing voucher is deleted outright rather than just unposted —
+    // a leftover draft "closing entry" is an accident waiting to happen:
+    // posting it later would close the same period twice. Closing the
+    // period again simply creates a fresh, correct one.
+    if (closing.closingVoucherId && vouchers.some(v => v.id === closing.closingVoucherId)) {
+      await queueWrite('vouchers', 'delete', { id: closing.closingVoucherId })
+    }
+    await refreshFromLocal()
+  }
+
+  function isDateLocked(date) {
+    if (!date) return false
+    return periodClosings.some(p => !p.reopened && date <= p.closedThrough && (!p.periodStart || date >= p.periodStart))
+  }
+
+  const LOCKED_MSG = 'That date is in a closed accounting period. Reopen the period in Closing Books first if it needs correcting.'
+  // Backstop for every code path that writes a voucher (the Vouchers page,
+  // plus Billing, POS, and Sales, which auto-post their own). Shows the
+  // app-wide error banner and tells the caller to skip the write, rather
+  // than throwing — a thrown error in a page that doesn't catch it just
+  // silently vanishes. Without this, a blocked write would still be
+  // rejected by the database lock, but only later, at sync time, as a
+  // confusing after-the-fact conflict.
+  function blockedByClosing(date) {
+    if (!isDateLocked(date)) return false
+    fail(null, LOCKED_MSG)
+    return true
   }
 
   async function deleteSalesInvoice(id) {
@@ -772,6 +945,10 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
 
   // ---- Danger zone ----
   async function deleteAllData() {
+    // Closings go first — otherwise every voucher inside a closed period
+    // would be refused by the database lock, and "delete all" would quietly
+    // leave the locked ones behind.
+    for (const p of periodClosings) await queueWrite('periodClosings', 'delete', { id: p.id })
     for (const v of vouchers) await queueWrite('vouchers', 'delete', { id: v.id })
     for (const b of bills) await queueWrite('bills', 'delete', { id: b.id })
     for (const a of accounts) await queueWrite('accounts', 'delete', { id: a.id })
@@ -788,6 +965,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       productionEntries,
       invoices, invoiceItems,
       myReports,
+      periodClosings,
       syncStatus, pending, conflicts, clearConflicts,
       clearError: () => setError(null),
       refresh,
@@ -805,6 +983,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       addProductionEntry, updateProductionEntry, deleteProductionEntry,
       addSalesInvoice, updateSalesInvoice, deleteSalesInvoice,
       submitReport, loadMyReports,
+      closeBooks, reopenPeriod, isDateLocked, computePeriodNetActivity, nextPeriodStart, latestOpenClosingId,
       updateSettings, deleteAllData,
     }}>
       {children}
