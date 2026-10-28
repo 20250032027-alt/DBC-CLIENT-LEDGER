@@ -180,6 +180,7 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
   // instead of the same problem repeated in red on every single row.
   const missing = new Map()
   let vatWithoutTaxAccount = 0
+  let oneSidedRows = 0 // rows where a blank account title left one side out
   const hasAccount = name => accounts.some(a => (a.name || '').trim().toLowerCase() === name.toLowerCase())
   const clientNames = new Set()
   let flaggedCount = 0
@@ -247,6 +248,7 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     // on the sheet; the voucher doesn't force every row to balance on
     // its own the way a normal manually-entered voucher would.
     if (isDisbursement) {
+      if (!!accountDebit !== !!accountCredit) oneSidedRows++
       if (accountDebit) entries.push(line(accountDebit, safeDebit, 0))
       if (vatAmount > 0 && taxAccountName) entries.push(line(taxAccountName, 0, vatAmount))
       if (accountCredit) entries.push(line(accountCredit, 0, safeCash))
@@ -261,7 +263,8 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     ? `Clients on these lines: ${[...clientNames].join(', ')}`
     : ''
 
-  return { entries, flaggedCount, rowCount, clientNote, headerError: null, missingAccounts: [...missing.values()], vatWithoutTaxAccount }
+  const totals = voucherTotals(entries)
+  return { entries, flaggedCount, rowCount, clientNote, headerError: null, missingAccounts: [...missing.values()], vatWithoutTaxAccount, oneSidedRows, totals }
 }
 
 // A starting suggestion for a new account's type, from its name and which
@@ -353,17 +356,20 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onAddAccou
     setImporting(true)
     const date = new Date().toISOString().slice(0, 10)
     const number = nextVoucherNumber(journalType, date, vouchers)
-    const willPost = parsed.flaggedCount === 0
+    // Imports are ALWAYS saved as a draft — even a perfectly clean one — so a
+    // person checks it before it reaches the books, then posts it with the
+    // checkmark like any other voucher (which asks for confirmation and the
+    // deletion password, if one is set). Auto-posting skipped both.
     const memo = `Bulk import — ${parsed.rowCount} row${parsed.rowCount !== 1 ? 's' : ''}` +
       (parsed.flaggedCount ? `, ${parsed.flaggedCount} flagged for review` : '') +
       (parsed.clientNote ? `. ${parsed.clientNote}` : '')
     await onImport({
-      type: journalType, date, number, posted: willPost,
+      type: journalType, date, number, posted: false,
       reference: '', memo, payee: '', payeeTin: '', payeeAddress: '', clientId: '',
       entries: parsed.entries,
     })
     setImporting(false)
-    setCreated({ number, posted: willPost })
+    setCreated({ number })
   }
 
   return (
@@ -377,27 +383,16 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onAddAccou
         {created !== null ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <CheckCircle size={32} style={{ color: 'var(--green)', marginBottom: 10 }} />
-            {created.posted ? (
-              <>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Voucher {created.number} created and posted</div>
-                <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6 }}>
-                  Nothing was flagged, so it went straight into your reports.
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Draft voucher {created.number} created</div>
-                <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6 }}>
-                  Some rows were flagged, so it's marked DRAFT and won't affect your reports until you review it and click Post.
-                </div>
-              </>
-            )}
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Draft voucher {created.number} created</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6, lineHeight: 1.5 }}>
+              It won't affect your reports yet. Check it in Vouchers, then post it with the checkmark.
+            </div>
           </div>
         ) : (
           <>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
-              Every row in the sheet becomes lines inside one voucher — nothing gets
-              rejected. A blank account title is fine: that side just isn't added as a line, no
+              Every row in the sheet becomes lines inside one <strong>draft</strong> voucher — nothing gets
+              rejected, and nothing is posted until you check it and post it yourself. A blank account title is fine: that side just isn't added as a line, no
               warning. Rows with a real problem (an account name that doesn't match anything in
               your Chart of Accounts, an amount that doesn't add up, etc.) are still included,
               just flagged in red with a remark, so you can review and fix them before posting.
@@ -488,9 +483,23 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onAddAccou
             {parsed && !parsed.headerError && (
               <div style={{ marginTop: 14 }}>
                 <div style={{ fontSize: 13, marginBottom: 8 }}>
-                  <strong>{parsed.rowCount} row{parsed.rowCount !== 1 ? 's' : ''}</strong> → {parsed.entries.length} lines in one {parsed.flaggedCount > 0 ? 'draft ' : ''}voucher
+                  <strong>{parsed.rowCount} row{parsed.rowCount !== 1 ? 's' : ''}</strong> → {parsed.entries.length} lines in one draft voucher
                   {parsed.flaggedCount > 0 && <span style={{ color: 'var(--red)' }}> · {parsed.flaggedCount} flagged for review</span>}
                 </div>
+                <div style={{ fontSize: 12.5, marginBottom: 8, color: 'var(--text-2)' }}>
+                  Debits {fmt(parsed.totals.debit)} · Credits {fmt(parsed.totals.credit)}
+                  {parsed.totals.balanced
+                    ? <span style={{ color: 'var(--green)' }}> · balanced</span>
+                    : <span style={{ color: 'var(--red)', fontWeight: 600 }}> · unbalanced by {fmt(Math.abs(parsed.totals.debit - parsed.totals.credit))}</span>}
+                </div>
+                {!parsed.totals.balanced && (
+                  <div style={{ fontSize: 12.5, color: 'var(--amber)', background: 'var(--amber-dim)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', marginBottom: 8, lineHeight: 1.5 }}>
+                    <strong>This voucher doesn't balance, so it can't be posted until it does.</strong>
+                    {parsed.oneSidedRows > 0
+                      ? ` ${parsed.oneSidedRows} row${parsed.oneSidedRows !== 1 ? 's have' : ' has'} a blank Debit or Credit account title, so only one side of ${parsed.oneSidedRows !== 1 ? 'those rows was' : 'that row was'} added. Fill in the missing account titles in the sheet, or add the missing lines to the draft after importing.`
+                      : ' Check the flagged rows — their amounts don\'t add up.'}
+                  </div>
+                )}
                 <div style={{ maxHeight: 220, overflowY: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                   {parsed.entries.map(e => (
                     <div key={e.id} style={{
@@ -520,7 +529,7 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onAddAccou
             <>
               <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
               <button className="btn btn-primary" disabled={!parsed?.entries?.length || importing} onClick={handleImport}>
-                {importing ? 'Creating…' : parsed?.flaggedCount === 0 ? 'Create & Post Voucher' : 'Create Draft Voucher'}
+                {importing ? 'Creating…' : 'Create Draft Voucher'}
               </button>
             </>
           )}
@@ -1191,15 +1200,18 @@ function Row({ label, val, color, bold }) {
 }
 
 // ── Print Voucher — matches the client's existing paper Cash Voucher form ──
-function printVoucher(voucher, settings, accounts = [], clients = []) {
+// opts.unsaved — printed from the edit window with changes that haven't been
+// saved yet. Marked clearly, so a printout can't be mistaken for (or filed
+// as) the record that's actually in the ledger.
+function printVoucher(voucher, settings, accounts = [], clients = [], opts = {}) {
   const w = window.open('', '_blank', 'width=900,height=700')
   const entries = voucher.entries || []
-  const { debit, credit } = voucherTotals(entries)
+  const { debit, credit, balanced } = voucherTotals(entries)
   const client = clients.find(c => c.id === voucher.clientId)
   const title = VOUCHER_TITLE[voucher.type] || 'VOUCHER'
 
   function accountCode(name) {
-    const match = accounts.find(a => a.name.trim().toLowerCase() === (name || '').trim().toLowerCase())
+    const match = accounts.find(a => (a.name || '').trim().toLowerCase() === (name || '').trim().toLowerCase())
     return match ? match.code : ''
   }
 
@@ -1321,6 +1333,7 @@ function printVoucher(voucher, settings, accounts = [], clients = []) {
     </div>
 
     <div class="title">${title}</div>
+    ${opts.unsaved ? `<div style="text-align:center; margin:-4px 0 14px; padding:6px 10px; border:2px dashed #b45309; color:#b45309; font-weight:700; font-size:12px; letter-spacing:.5px;">UNSAVED CHANGES — this printout does not match the saved ledger yet</div>` : ''}
 
     <div class="meta-row">${voucher.number || '—'}</div>
 
@@ -1354,6 +1367,7 @@ function printVoucher(voucher, settings, accounts = [], clients = []) {
           <td class="r">${fmt(credit, settings.currency)}</td>
           <td></td>
         </tr>
+        ${balanced ? '' : `<tr><td colspan="5" style="text-align:right; color:#b91c1c; font-weight:700; padding-top:6px;">UNBALANCED — ${debit > credit ? 'debits' : 'credits'} are higher by ${fmt(Math.abs(debit - credit), settings.currency)}</td></tr>`}
       </tfoot>
     </table>
 
@@ -1583,8 +1597,13 @@ function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
   const [error, setError] = useState('')
   const requiresPassword = !!(settings?.deletePasswordHash)
   const entryCount = (voucher.entries || []).length
+  // Posting an unbalanced voucher would throw the Trial Balance off. The edit
+  // window never lets one be saved, but a Bulk Import draft can be (a blank
+  // account title skips that side), so the check has to live here too.
+  const { debit, credit, balanced } = voucherTotals(voucher.entries || [])
 
   async function handleConfirm() {
+    if (!balanced) return
     if (requiresPassword && !(await verifySecret(password, settings.pwSalt, settings.deletePasswordHash))) {
       setError('Incorrect password.')
       return
@@ -1624,9 +1643,16 @@ function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
           <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 10 }}>{error}</div>
         )}
 
+        {!balanced && (
+          <div style={{ fontSize: 12.5, color: 'var(--red)', background: 'var(--red-dim)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', marginTop: 12, lineHeight: 1.5 }}>
+            <strong>This voucher doesn't balance</strong> — debits {fmt(debit)}, credits {fmt(credit)}, a difference of {fmt(Math.abs(debit - credit))}.
+            Edit it until they match, then post it.
+          </div>
+        )}
+
         <div className="modal-footer" style={{ marginTop: 20 }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleConfirm}>Post Voucher</button>
+          <button className="btn btn-primary" onClick={handleConfirm} disabled={!balanced}>Post Voucher</button>
         </div>
       </div>
     </div>
@@ -1833,7 +1859,16 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
           <span className="modal-title">{voucher ? 'Edit Voucher' : 'New Voucher'}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {voucher && (
-              <button className="icon-btn" title="Print Voucher" onClick={() => printVoucher(voucher, settings, accounts, clients)}>
+              <button
+                className="icon-btn"
+                title="Print Voucher (prints what's on screen, including unsaved edits)"
+                // Prints the form as it is right now — previously this printed
+                // the voucher as it was when the window opened, so edits never
+                // showed up on paper.
+                onClick={() => printVoucher(form, settings, accounts, clients, {
+                  unsaved: JSON.stringify(form) !== JSON.stringify({ ...voucher, memo: voucher.memo || '' }),
+                })}
+              >
                 <Printer size={16} />
               </button>
             )}

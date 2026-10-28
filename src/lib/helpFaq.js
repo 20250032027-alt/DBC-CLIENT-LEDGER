@@ -74,7 +74,8 @@ Two things to know:
 Good to know:
 - All rows go into **one voucher**.
 - If a row's debit or credit **account is blank**, that side is simply left out. No warning.
-- An account name that doesn't match your Chart of Accounts, or amounts that don't add up, gets **flagged in red**. If anything is flagged, the voucher is saved as a **Draft** so you can review it. If nothing is flagged, it's **posted** right away.
+- An account name that doesn't match your Chart of Accounts, or amounts that don't add up, gets **flagged in red** so you can fix it.
+- The import is always saved as a **Draft**, even when nothing is flagged. Check it in Vouchers, then post it with the checkmark. A voucher that doesn't balance can't be posted.
 - Each line's description is the **payee**.`,
   },
   {

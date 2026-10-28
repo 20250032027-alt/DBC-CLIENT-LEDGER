@@ -79,8 +79,10 @@ the one concept almost every question eventually comes back to.
 - Rows with a real problem — an account name that doesn't match anything
   in the Chart of Accounts, or amounts that don't add up — are still
   included but **flagged in red** in the preview with a remark
-- If anything is flagged, the voucher is saved as a **Draft** for review.
-  If nothing is flagged, it's **posted** immediately
+- The import is ALWAYS saved as a **Draft**, even when nothing is
+  flagged — someone checks it first, then posts it with the checkmark like
+  any voucher (confirmation + deletion password if set). A voucher whose
+  debits and credits don't match can't be posted until it's fixed
 - Each line's description is the **payee** only
 
 # Chart of Accounts
