@@ -54,7 +54,12 @@ export async function queueWrite(table, op, record, { silent = false } = {}) {
 
 async function pullTable(table) {
   const cfg = TABLES[table]
-  const { data, error } = await supabase.from(cfg.remote).select('*')
+  // Scoped to the account being synced — not just "everything I'm allowed
+  // to see." For a normal user those are the same thing (database security
+  // only returns their own rows). But the admin account is allowed to see
+  // EVERY client's rows, so without this filter, opening one client in
+  // Manage Ledger downloaded all clients' records into one merged ledger.
+  const { data, error } = await supabase.from(cfg.remote).select('*').eq('user_id', userId)
   if (error) throw error
 
   for (const row of data) {
@@ -87,7 +92,10 @@ async function pullTable(table) {
   // rows deleted on the server that we still have locally (and aren't
   // ourselves trying to delete) should disappear locally too
   const remoteIds = new Set(data.map(r => r[cfg.pk === 'userId' ? 'user_id' : 'id']))
-  const localRows = await db[table].toArray()
+  // Only this account's cached rows are checked — other accounts' cached
+  // rows on this device (e.g. a different client the admin viewed earlier)
+  // were never part of this download, so their absence here means nothing.
+  const localRows = await db[table].where('userId').equals(userId).toArray()
   for (const row of localRows) {
     const pkVal = row[cfg.pk]
     if (!remoteIds.has(pkVal) && !row._dirty) {

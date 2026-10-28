@@ -72,6 +72,16 @@ db.version(8).stores({
   periodClosings: 'id, userId, updatedAt, _dirty',
 })
 
+// The rows the app should SHOW for one account. This device's local
+// database can hold more than one account's data — the admin viewing
+// several clients, or two people signing in on a shared computer — so
+// every screen reads through this, never the whole table.
+export function liveRowsFor(table, userId) {
+  if (!userId) return Promise.resolve([])
+  // exclude local tombstones (queued deletes not yet confirmed)
+  return db[table].where('userId').equals(userId).filter(r => !r._deleted).toArray()
+}
+
 export async function clearLocalDb() {
   await Promise.all(db.tables.map(t => t.clear()))
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useCallback } from 'react'
-import { db } from '../lib/db'
+import { db, liveRowsFor } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { queueWrite, initSync, stopSync, onSyncStatusChange, pendingCount, syncNow } from '../lib/sync'
 import { DEFAULT_ACCOUNTS } from './defaultAccounts'
@@ -39,10 +39,6 @@ function sortByCode(list) {
   return [...list].sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true }))
 }
 
-function liveRows(table) {
-  // exclude local tombstones (queued deletes not yet confirmed)
-  return db[table].filter(r => !r._deleted).toArray()
-}
 
 const StoreContext = createContext(null)
 
@@ -71,14 +67,14 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
 
   const refreshFromLocal = useCallback(async () => {
     const [accData, cliData, vouData, billData, tplData, menuData, saleData, rmData, rmeData, prodData, asmData, peData, invData, iiData, pcData, setRow, conflictRows] = await Promise.all([
-      liveRows('accounts'), liveRows('clients'), liveRows('vouchers'),
-      liveRows('bills'), liveRows('templates'),
-      liveRows('menuItems'), liveRows('posSales'),
-      liveRows('rawMaterials'), liveRows('rawMaterialEntries'),
-      liveRows('products'), liveRows('assemblyItems'),
-      liveRows('productionEntries'),
-      liveRows('invoices'), liveRows('invoiceItems'),
-      liveRows('periodClosings'),
+      liveRowsFor('accounts', userId), liveRowsFor('clients', userId), liveRowsFor('vouchers', userId),
+      liveRowsFor('bills', userId), liveRowsFor('templates', userId),
+      liveRowsFor('menuItems', userId), liveRowsFor('posSales', userId),
+      liveRowsFor('rawMaterials', userId), liveRowsFor('rawMaterialEntries', userId),
+      liveRowsFor('products', userId), liveRowsFor('assemblyItems', userId),
+      liveRowsFor('productionEntries', userId),
+      liveRowsFor('invoices', userId), liveRowsFor('invoiceItems', userId),
+      liveRowsFor('periodClosings', userId),
       userId ? db.settings.get(userId) : null,
       db.conflicts.orderBy('ts').reverse().limit(20).toArray(),
     ])
