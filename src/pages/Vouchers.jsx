@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment } from 'react'
+import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink, Lock } from 'lucide-react'
@@ -252,12 +252,43 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
   return { entries, flaggedCount, rowCount, clientNote, headerError: null }
 }
 
+// Best guess at the company's VAT payable account, so the common case
+// needs no clicking. Companies name it differently ("VAT Payable", "Output
+// VAT", "Output Tax"...), and an exact "VAT Payable" match used to be the
+// only thing recognized — anything else silently started on None.
+function guessTaxAccount(accounts) {
+  const byName = re => accounts.find(a => re.test(a.name || ''))?.name
+  return byName(/vat\s*payable/i)
+    || accounts.find(a => a.type === 'liability' && /output\s*(vat|tax)|vat\s*output/i.test(a.name || ''))?.name
+    || ''
+}
+
 function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose }) {
   const [journalType, setJournalType] = useState('cash disbursement')
-  const [taxAccountName, setTaxAccountName] = useState(() => accounts.find(a => /vat payable/i.test(a.name))?.name || '')
-  const [parsed, setParsed] = useState(null)
+  const [taxAccountName, setTaxAccountName] = useState(() => guessTaxAccount(accounts))
+  const [taxTouched, setTaxTouched] = useState(false)
+  // The uploaded sheet itself is kept, and the preview is re-checked from it
+  // whenever the journal type or tax account changes. Previously changing
+  // either one threw the upload away: the preview vanished and Create went
+  // grey — right after a flagged row had told the person to pick a tax
+  // account, so doing exactly that looked like "the dropdown doesn't work."
+  const [sheet, setSheet] = useState(null) // { aoa, fileName }
   const [importing, setImporting] = useState(false)
-  const [createdNumber, setCreatedNumber] = useState(null)
+  const [created, setCreated] = useState(null) // { number, posted } — frozen at import time
+
+  // Accounts can still be loading when the modal opens; pick the default
+  // once they arrive, unless the person has already chosen something.
+  useEffect(() => {
+    if (!taxTouched && !taxAccountName) {
+      const guess = guessTaxAccount(accounts)
+      if (guess) setTaxAccountName(guess)
+    }
+  }, [accounts, taxTouched, taxAccountName])
+
+  const parsed = useMemo(
+    () => (sheet ? parseVoucherImportRows(sheet.aoa, journalType, taxAccountName, accounts, clients, vouchers) : null),
+    [sheet, journalType, taxAccountName, accounts, clients, vouchers],
+  )
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
@@ -265,10 +296,10 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
     const XLSX = await import('xlsx')
     const buf = await file.arrayBuffer()
     const wb = XLSX.read(buf, { type: 'array' })
-    const sheet = wb.Sheets[wb.SheetNames[0]]
-    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
-    setParsed(parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clients, vouchers))
-    e.target.value = ''
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+    setSheet({ aoa, fileName: file.name })
+    e.target.value = '' // lets the same file be picked again after editing it
   }
 
   async function handleImport() {
@@ -286,7 +317,7 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
       entries: parsed.entries,
     })
     setImporting(false)
-    setCreatedNumber(number)
+    setCreated({ number, posted: willPost })
   }
 
   return (
@@ -297,19 +328,19 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
           <button className="icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
 
-        {createdNumber !== null ? (
+        {created !== null ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <CheckCircle size={32} style={{ color: 'var(--green)', marginBottom: 10 }} />
-            {parsed?.flaggedCount === 0 ? (
+            {created.posted ? (
               <>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Voucher {createdNumber} created and posted</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Voucher {created.number} created and posted</div>
                 <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6 }}>
                   Nothing was flagged, so it went straight into your reports.
                 </div>
               </>
             ) : (
               <>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Draft voucher {createdNumber} created</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Draft voucher {created.number} created</div>
                 <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6 }}>
                   Some rows were flagged, so it's marked DRAFT and won't affect your reports until you review it and click Post.
                 </div>
@@ -329,14 +360,14 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
             <div className="form-grid" style={{ marginBottom: 14 }}>
               <div className="form-group">
                 <label className="form-label">Journal Type</label>
-                <select className="form-select" value={journalType} onChange={e => { setJournalType(e.target.value); setParsed(null) }}>
+                <select className="form-select" value={journalType} onChange={e => setJournalType(e.target.value)}>
                   <option value="cash disbursement">Disbursement Journal</option>
                   <option value="cash receipt">Receipt Journal</option>
                 </select>
               </div>
               <div className="form-group">
                 <label className="form-label">Tax / Withholding Account</label>
-                <select className="form-select" value={taxAccountName} onChange={e => { setTaxAccountName(e.target.value); setParsed(null) }}>
+                <select className="form-select" value={taxAccountName} onChange={e => { setTaxAccountName(e.target.value); setTaxTouched(true) }}>
                   <option value="">— None (Vat column must be 0) —</option>
                   {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
                 </select>
@@ -350,6 +381,11 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
             <div className="form-group form-col-full" style={{ marginBottom: 4 }}>
               <label className="form-label">Upload filled-in template</label>
               <input type="file" accept=".xlsx,.xls" className="form-input" onChange={handleFile} />
+              {sheet && (
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6 }}>
+                  Using <strong style={{ color: 'var(--text-2)' }}>{sheet.fileName}</strong>. Changing the options above re-checks it automatically — no need to upload again.
+                </div>
+              )}
             </div>
 
             {parsed?.headerError && (
@@ -359,7 +395,7 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
             {parsed && !parsed.headerError && (
               <div style={{ marginTop: 14 }}>
                 <div style={{ fontSize: 13, marginBottom: 8 }}>
-                  <strong>{parsed.rowCount} row{parsed.rowCount !== 1 ? 's' : ''}</strong> → {parsed.entries.length} lines in one draft voucher
+                  <strong>{parsed.rowCount} row{parsed.rowCount !== 1 ? 's' : ''}</strong> → {parsed.entries.length} lines in one {parsed.flaggedCount > 0 ? 'draft ' : ''}voucher
                   {parsed.flaggedCount > 0 && <span style={{ color: 'var(--red)' }}> · {parsed.flaggedCount} flagged for review</span>}
                 </div>
                 <div style={{ maxHeight: 220, overflowY: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -385,7 +421,7 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
         )}
 
         <div className="modal-footer">
-          {createdNumber !== null ? (
+          {created !== null ? (
             <button className="btn btn-primary" onClick={onClose}>Done</button>
           ) : (
             <>
