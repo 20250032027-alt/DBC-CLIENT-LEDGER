@@ -175,6 +175,12 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
   const dataStart = headerRowIdx + 2
   const isDisbursement = journalType === 'cash disbursement'
   const entries = []
+  // Account names the sheet uses that this company doesn't have yet,
+  // de-duplicated — shown as one clear list with a one-click "add these",
+  // instead of the same problem repeated in red on every single row.
+  const missing = new Map()
+  let vatWithoutTaxAccount = 0
+  const hasAccount = name => accounts.some(a => (a.name || '').trim().toLowerCase() === name.toLowerCase())
   const clientNames = new Set()
   let flaggedCount = 0
   let rowCount = 0
@@ -203,13 +209,19 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     // anything in the Chart of Accounts is different — that's much more
     // likely a typo or a real mismatch, worth a human actually checking
     // before it posts to the books.
-    if (accountDebit && !accounts.find(a => a.name.trim().toLowerCase() === accountDebit.toLowerCase())) issues.push(`account "${accountDebit}" not in Chart of Accounts`)
-    if (accountCredit && !accounts.find(a => a.name.trim().toLowerCase() === accountCredit.toLowerCase())) issues.push(`account "${accountCredit}" not in Chart of Accounts`)
+    if (accountDebit && !hasAccount(accountDebit)) {
+      issues.push(`account "${accountDebit}" not in Chart of Accounts`)
+      if (!missing.has(accountDebit.toLowerCase())) missing.set(accountDebit.toLowerCase(), { name: accountDebit, side: 'debit' })
+    }
+    if (accountCredit && !hasAccount(accountCredit)) {
+      issues.push(`account "${accountCredit}" not in Chart of Accounts`)
+      if (!missing.has(accountCredit.toLowerCase())) missing.set(accountCredit.toLowerCase(), { name: accountCredit, side: 'credit' })
+    }
     const safeDebit = Number.isFinite(debitAmount) && debitAmount > 0 ? debitAmount : 0
     const safeCash = Number.isFinite(cashAmount) && cashAmount > 0 ? cashAmount : 0
     if (!safeDebit) issues.push('missing/invalid Debit Amount')
     if (!safeCash) issues.push('missing/invalid Cash amount')
-    if (vatAmount > 0 && !taxAccountName) issues.push('has Vat but no tax account was chosen for this import')
+    if (vatAmount > 0 && !taxAccountName) { issues.push('has Vat but no tax account was chosen for this import'); vatWithoutTaxAccount++ }
     if (safeDebit && safeCash && Math.abs((vatAmount + safeCash) - safeDebit) > 0.01) issues.push(`Vat + Cash ≠ Debit Amount`)
 
     const flagged = issues.length > 0
@@ -249,7 +261,24 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     ? `Clients on these lines: ${[...clientNames].join(', ')}`
     : ''
 
-  return { entries, flaggedCount, rowCount, clientNote, headerError: null }
+  return { entries, flaggedCount, rowCount, clientNote, headerError: null, missingAccounts: [...missing.values()], vatWithoutTaxAccount }
+}
+
+// A starting suggestion for a new account's type, from its name and which
+// side of the entry it's on. Only a suggestion — every one is shown in a
+// dropdown to change before anything is added.
+const ACCOUNT_TYPES = [['asset', 'Asset'], ['liability', 'Liability'], ['equity', 'Equity'], ['revenue', 'Revenue'], ['expense', 'Expense']]
+function guessAccountType(name, side, journalType) {
+  const n = name.toLowerCase()
+  if (/expense/.test(n)) return 'expense'
+  if (/payable|loan|accrued|unearned|output (vat|tax)/.test(n)) return 'liability'
+  if (/capital|equity|drawing|retained/.test(n)) return 'equity'
+  if (/cash|bank|petty|receivable|inventory|prepaid|input (vat|tax)|equipment|furniture|vehicle|deposit/.test(n)) return 'asset'
+  if (/revenue|sales|income|earned/.test(n)) return 'revenue'
+  if (/fee|supplies|transpo|travel|communication|internet|phone|utilit|electric|water|rent|salar|wage|repair|maintenance|meal|representation|fuel|gas|parking|toll|insurance|depreciation|freight|postage|advertis|subscription|commission/.test(n)) return 'expense'
+  // By position: what usually sits on each side of a receipt/disbursement
+  if (journalType === 'cash disbursement') return side === 'debit' ? 'expense' : 'asset'
+  return side === 'debit' ? 'asset' : 'revenue'
 }
 
 // Best guess at the company's VAT payable account, so the common case
@@ -263,7 +292,7 @@ function guessTaxAccount(accounts) {
     || ''
 }
 
-function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose }) {
+function ImportVouchersModal({ accounts, clients, vouchers, onImport, onAddAccount, onClose }) {
   const [journalType, setJournalType] = useState('cash disbursement')
   const [taxAccountName, setTaxAccountName] = useState(() => guessTaxAccount(accounts))
   const [taxTouched, setTaxTouched] = useState(false)
@@ -275,6 +304,8 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
   const [sheet, setSheet] = useState(null) // { aoa, fileName }
   const [importing, setImporting] = useState(false)
   const [created, setCreated] = useState(null) // { number, posted } — frozen at import time
+  const [typeChoice, setTypeChoice] = useState({}) // lowercased name -> chosen type
+  const [addingAccounts, setAddingAccounts] = useState(false)
 
   // Accounts can still be loading when the modal opens; pick the default
   // once they arrive, unless the person has already chosen something.
@@ -289,6 +320,21 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
     () => (sheet ? parseVoucherImportRows(sheet.aoa, journalType, taxAccountName, accounts, clients, vouchers) : null),
     [sheet, journalType, taxAccountName, accounts, clients, vouchers],
   )
+
+  // Adds every missing account in one go. The preview re-checks itself
+  // as soon as the accounts exist, so the red flags clear on their own.
+  async function addMissingAccounts() {
+    if (!parsed?.missingAccounts?.length || addingAccounts) return
+    setAddingAccounts(true)
+    try {
+      for (const m of parsed.missingAccounts) {
+        const type = typeChoice[m.name.toLowerCase()] || guessAccountType(m.name, m.side, journalType)
+        await onAddAccount({ code: '', name: m.name, type, description: 'Added from Bulk Import' })
+      }
+    } finally {
+      setAddingAccounts(false)
+    }
+  }
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
@@ -390,6 +436,53 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onClose })
 
             {parsed?.headerError && (
               <div style={{ fontSize: 12.5, color: 'var(--red)', marginTop: 10 }}>{parsed.headerError}</div>
+            )}
+
+            {accounts.length === 0 && (
+              <div style={{ fontSize: 12.5, color: 'var(--amber)', background: 'var(--amber-dim)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', marginTop: 12, lineHeight: 1.5 }}>
+                <strong>This company's Chart of Accounts is empty.</strong> The tax dropdown and the account matching both need accounts.
+                Upload your sheet and add the accounts it uses below, or set up the starter chart in <strong>Chart of Accounts</strong> first.
+              </div>
+            )}
+
+            {parsed?.missingAccounts?.length > 0 && (
+              <div style={{ marginTop: 12, padding: '12px 14px', border: '1px solid var(--amber)', borderRadius: 'var(--radius-sm)', background: 'var(--amber-dim)' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                  Your sheet uses {parsed.missingAccounts.length} account{parsed.missingAccounts.length !== 1 ? 's' : ''} this company doesn't have yet
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10, lineHeight: 1.5 }}>
+                  Check each type, then add them all. If one is a typo of an account you already have, fix the sheet instead and upload it again.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
+                  {parsed.missingAccounts.map(m => {
+                    const key = m.name.toLowerCase()
+                    return (
+                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ flex: 1, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                        <select
+                          className="form-select" style={{ width: 130, padding: '4px 8px', fontSize: 12 }}
+                          value={typeChoice[key] || guessAccountType(m.name, m.side, journalType)}
+                          onChange={e => setTypeChoice(t => ({ ...t, [key]: e.target.value }))}
+                        >
+                          {ACCOUNT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </div>
+                    )
+                  })}
+                </div>
+                <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={addMissingAccounts} disabled={addingAccounts}>
+                  {addingAccounts ? 'Adding…' : `Add ${parsed.missingAccounts.length === 1 ? 'this account' : `these ${parsed.missingAccounts.length} accounts`} to Chart of Accounts`}
+                </button>
+              </div>
+            )}
+
+            {parsed?.vatWithoutTaxAccount > 0 && (
+              <div style={{ fontSize: 12.5, color: 'var(--amber)', background: 'var(--amber-dim)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', marginTop: 12, lineHeight: 1.5 }}>
+                <strong>{parsed.vatWithoutTaxAccount} row{parsed.vatWithoutTaxAccount !== 1 ? 's have' : ' has'} a Vat amount</strong> but no Tax / Withholding Account is selected above.
+                {!accounts.some(a => a.type === 'liability')
+                  ? ' Add the account you use for it in Chart of Accounts (for example VAT Payable), then pick it in the dropdown.'
+                  : ' Pick it in the dropdown — the preview updates automatically.'}
+              </div>
             )}
 
             {parsed && !parsed.headerError && (
@@ -2096,7 +2189,7 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
 export default function Vouchers() {
   const {
     vouchers, addVoucher, updateVoucher, deleteVoucher, clients, accounts, templates, addTemplate, deleteTemplate, settings,
-    uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment, isDateLocked,
+    uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment, isDateLocked, addAccount,
   } = useStore()
   const [modal, setModal] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -2390,6 +2483,7 @@ export default function Vouchers() {
           clients={clients}
           vouchers={vouchers}
           onImport={addVoucher}
+          onAddAccount={addAccount}
           onClose={() => setShowImport(false)}
         />
       )}
