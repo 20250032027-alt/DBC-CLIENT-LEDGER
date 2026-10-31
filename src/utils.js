@@ -56,6 +56,35 @@ export function postedOnly(vouchers = []) {
   return vouchers.filter(v => v.posted !== false)
 }
 
+// A calendar date as "YYYY-MM-DD", built WITHOUT any timezone conversion.
+// month is 0-based (like Date); day 0 means "last day of the previous
+// month", so isoDate(y, m + 1, 0) is the last day of month m.
+//
+// Why this exists: new Date(y, m, d).toISOString() builds the date at
+// local midnight and then converts it to UTC — in the Philippines (UTC+8)
+// that's 4 PM the PREVIOUS day, so every date range came out one day
+// early. Quarterly tax returns covered Dec 31 → Mar 30 instead of
+// Jan 1 → Mar 31, putting last-day-of-quarter transactions in the wrong
+// return.
+export function isoDate(year, month, day) {
+  return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10)
+}
+
+// Closing Books posts a voucher that zeroes every Revenue and Expense
+// account into equity. That voucher is real for BALANCES (Balance Sheet,
+// Trial Balance, Account Listing — it's how the profit moves into
+// Retained Earnings), but it is not a business transaction. Anything that
+// reports ACTIVITY — the Income Statement, tax reports, Tally's "how much
+// did we earn/spend" answers — must leave it out, or a closed period's
+// revenue and expenses show up as zero.
+export function closingVoucherIds(periodClosings = []) {
+  return new Set(periodClosings.filter(p => !p.reopened && p.closingVoucherId).map(p => p.closingVoucherId))
+}
+export function excludeClosingEntries(vouchers = [], periodClosings = []) {
+  const ids = closingVoucherIds(periodClosings)
+  return ids.size ? vouchers.filter(v => !ids.has(v.id)) : vouchers
+}
+
 // Single source of truth for voucher number prefixes/titles, shared between
 // the Vouchers page (assigning a number on save) and useStore's boot-time
 // backfill (fixing pre-existing records that were saved without one).

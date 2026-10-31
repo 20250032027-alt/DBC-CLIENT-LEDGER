@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, postedOnly, buildLedger, buildFinancialSections as buildSections, foldBillingIntoSections } from '../utils'
+import { fmt, postedOnly, buildLedger, buildFinancialSections as buildSections, foldBillingIntoSections, excludeClosingEntries } from '../utils'
 import { BarChart3, X, Download } from 'lucide-react'
 
 async function exportFinancialReportToExcel({
@@ -119,7 +119,7 @@ function DateLabel({ label, value }) {
 }
 
 export default function FinancialCondition() {
-  const { vouchers: allVouchers, bills, accounts, settings } = useStore()
+  const { vouchers: allVouchers, bills, accounts, settings, periodClosings } = useStore()
   const vouchers = postedOnly(allVouchers)
   const cur = settings.currency
 
@@ -136,13 +136,16 @@ export default function FinancialCondition() {
   }, [vouchers, asOf])
 
   // Filter vouchers for Income Statement (only within date range)
+  // Income Statement only: closing vouchers zero out Revenue and Expense, so
+  // including them would show a closed period's earnings as ₱0. The Balance
+  // Sheet above deliberately KEEPS them — that's how profit reaches equity.
   const isVouchers = useMemo(() => {
-    return vouchers.filter(v => {
+    return excludeClosingEntries(vouchers, periodClosings).filter(v => {
       if (incomeFrom && v.date && v.date < incomeFrom) return false
       if (incomeTo && v.date && v.date > incomeTo) return false
       return true
     })
-  }, [vouchers, incomeFrom, incomeTo])
+  }, [vouchers, periodClosings, incomeFrom, incomeTo])
 
   // Filter bills for Balance Sheet (up to asOf)
   const bsBills = useMemo(() => {

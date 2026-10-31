@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, postedOnly, normalizeTin } from '../utils'
+import { fmt, fmtDate, postedOnly, normalizeTin, excludeClosingEntries } from '../utils'
 import { FileBarChart, Download, X } from 'lucide-react'
 
 // Special revenue accounts that are VAT-exempt but still need to show up in
@@ -122,8 +122,9 @@ async function exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, 
 }
 
 export default function TaxReport() {
-  const { vouchers: allVouchers, accounts, settings } = useStore()
-  const vouchers = postedOnly(allVouchers)
+  const { vouchers: allVouchers, accounts, settings, periodClosings } = useStore()
+  // Closing vouchers aren't transactions — leave them out of tax figures (see excludeClosingEntries in utils)
+  const vouchers = excludeClosingEntries(postedOnly(allVouchers), periodClosings)
   const cur = settings.currency
 
   const [from, setFrom] = useState('')

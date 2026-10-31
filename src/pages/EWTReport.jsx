@@ -1,20 +1,20 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, postedOnly, formatTin, normalizeTin } from '../utils'
+import { fmt, fmtDate, postedOnly, formatTin, normalizeTin, isoDate, excludeClosingEntries } from '../utils'
 import { Printer, FileText } from 'lucide-react'
 
 const WT_ACCOUNT_NAME = 'Withholding Tax Payable'
 
 function monthRange(year, month) {
-  const from = new Date(year, month, 1).toISOString().slice(0, 10)
-  const to = new Date(year, month + 1, 0).toISOString().slice(0, 10)
+  const from = isoDate(year, month, 1)
+  const to = isoDate(year, month + 1, 0)
   return { from, to }
 }
 
 function quarterRange(year, q) {
   const startMonth = (q - 1) * 3
-  const from = new Date(year, startMonth, 1).toISOString().slice(0, 10)
-  const to = new Date(year, startMonth + 3, 0).toISOString().slice(0, 10)
+  const from = isoDate(year, startMonth, 1)
+  const to = isoDate(year, startMonth + 3, 0)
   return { from, to, startMonth }
 }
 
@@ -507,8 +507,9 @@ function printForm2307({ settings, payee, from, to, lines, totals, monthLabels }
 }
 
 export default function EWTReport() {
-  const { vouchers: allVouchers, accounts, settings, clients } = useStore()
-  const vouchers = postedOnly(allVouchers)
+  const { vouchers: allVouchers, accounts, settings, clients, periodClosings } = useStore()
+  // Closing vouchers aren't transactions — leave them out of tax figures (see excludeClosingEntries in utils)
+  const vouchers = excludeClosingEntries(postedOnly(allVouchers), periodClosings)
   const cur = settings.currency
 
   const [reportTab, setReportTab] = useState('ewt')

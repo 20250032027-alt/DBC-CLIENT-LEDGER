@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { X, Send, Loader2, Flag, Zap, Sparkles, ArrowRight, RotateCcw } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { X, Send, Loader2, Flag, Zap, Sparkles, ArrowRight, RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react'
 import { supabase, supabaseUrl } from '../lib/supabase'
 import { useStore } from '../store/useStore.jsx'
 import { buildDataSummary } from '../utils'
@@ -8,6 +8,8 @@ import { captureScreenshot } from '../lib/screenshot'
 import ReportModal from './ReportModal.jsx'
 import { findInstantAnswer } from '../lib/helpFaq'
 import Tally from './Tally.jsx'
+import { answerNumbers } from '../lib/tallyNumbers'
+import { checkBooks } from '../lib/tallyHealth'
 
 // ── Minimal markdown rendering — no new dependency ──
 // The model's answers use a small, predictable set of formatting: **bold**,
@@ -117,14 +119,22 @@ const PAGE_LABEL = Object.fromEntries(TEAM_PAGES.map(p => [p.id, p.label]))
 
 // Starter questions for whichever page the person is on, so nobody faces
 // an empty box. Mostly ones the instant answers cover — free and immediate.
+// Money questions are answered by Tally's numbers engine — calculated
+// from the books, free and instant. They're hidden when peso figures are
+// turned off for the assistant (Settings → Help Assistant).
 const SUGGESTIONS = {
-  dashboard: ['How do I record a transaction?', 'How do I close the books?', 'Does it work offline?'],
-  vouchers: ['How do I post a voucher?', 'How does bulk import work?', 'How do I attach a receipt?'],
-  accounts: ['How do I add a new account?', 'How do I export to Excel?'],
+  dashboard: ['How did we do this month?', 'How much cash do we have?', 'How do I record a transaction?'],
+  vouchers: ['How do I post a voucher?', 'How many drafts do we have?', 'How does bulk import work?'],
+  accounts: ['How do I add a new account?', 'Biggest expenses this month?'],
+  financial: ['How did we do this month?', "What's our profit this year?", 'Biggest expenses this month?'],
+  'account-listing': ['Biggest expenses this month?', 'How do I export to Excel?'],
+  billing: ['Any unpaid invoices?', 'How much cash do we have?'],
   'closing-books': ['How do I close the books?', 'How do I reopen a closed period?'],
   settings: ['How do I add a team member?', 'How do I turn on dark mode?', 'Where is the tutorial?'],
 }
-const DEFAULT_SUGGESTIONS = ['How do I record a transaction?', 'How does bulk import work?', 'Paano mag post ng voucher?']
+const DEFAULT_SUGGESTIONS = ['How did we do this month?', 'How do I record a transaction?', 'Paano mag post ng voucher?']
+const MONEY_CHIPS = new Set(['How did we do this month?', 'How much cash do we have?', 'Biggest expenses this month?', "What's our profit this year?", 'Any unpaid invoices?'])
+const BOOKS_CHECK = /check (my |our |the )?books|health ?check|anything wrong|any problems|may mali|i-?check/i
 
 // Pages mentioned in an answer (as **Page Name**) become "Go to" buttons,
 // so a person can jump straight there instead of hunting in the sidebar.
@@ -147,7 +157,11 @@ function loadSaved(key) {
 // tracks both (current nav page, and the Team Member identification gate)
 // — this widget doesn't need its own copy of that logic.
 export default function HelpChatWidget({ page, activeMember, onNavigate }) {
-  const { userId, vouchers, clients, bills, accounts, settings } = useStore()
+  const { userId, vouchers, clients, bills, accounts, settings, periodClosings } = useStore()
+  const books = { vouchers, accounts, bills, settings, periodClosings }
+  // The quick check of the books, recomputed whenever the books change.
+  const health = useMemo(() => checkBooks({ vouchers, accounts, bills, periodClosings }), [vouchers, accounts, bills, periodClosings])
+  const moneyOn = settings?.helpAssistantDataEnabled !== false
   const [open, setOpen] = useState(false)
   // The conversation is kept on this device per account (and per Team
   // Member), so closing the chat or reloading the page doesn't lose it.
@@ -162,7 +176,9 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
   const scrollRef = useRef(null)
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    // Jump to the newest message — but the welcome screen starts at the top,
+    // so Tally's greeting isn't scrolled out of view.
+    if (scrollRef.current) scrollRef.current.scrollTop = messages.length ? scrollRef.current.scrollHeight : 0
   }, [messages, open])
 
   // Switching account / Team Member loads that person's own conversation.
@@ -204,6 +220,19 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
     const instant = findInstantAnswer(text)
     if (instant) {
       setMessages([...withQuestion, { role: 'model', text: instant.answer, instant: true, goto: instant.goto || null }])
+      return
+    }
+    // Money questions are CALCULATED from the books with the same functions
+    // as the reports — the AI never invents a figure. Free, instant, offline.
+    const computed = answerNumbers(text, books)
+    if (computed) {
+      setMessages([...withQuestion, { role: 'model', text: computed.text, computed: true, goto: computed.goto || null }])
+      return
+    }
+    if (BOOKS_CHECK.test(text)) {
+      setMessages([...withQuestion, { role: 'model', computed: true, check: health.items,
+        text: !health.items.length ? "Nothing to check yet — post your first voucher and I'll keep an eye on things."
+          : health.issues ? `I found **${health.issues} thing${health.issues !== 1 ? 's' : ''}** worth a look:` : "Your books look good! Here's what I checked:" }])
       return
     }
     if (!online) {
@@ -313,7 +342,22 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
     }
   }
 
-  const suggestions = SUGGESTIONS[page] || DEFAULT_SUGGESTIONS
+  const checkList = items => items.map((it, k) => (
+    <div key={k} className="tally-check-item">
+      {it.level === 'ok'
+        ? <CheckCircle2 size={14} color="var(--green)" style={{ flexShrink: 0, marginTop: 1 }} />
+        : <AlertCircle size={14} color="var(--amber)" style={{ flexShrink: 0, marginTop: 1 }} />}
+      <span style={{ flex: 1 }}>{it.text}</span>
+      {it.level === 'warn' && it.goto && it.goto !== page && (
+        <button className="tally-goto" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => goTo(it.goto)}>
+          Fix <ArrowRight size={11} />
+        </button>
+      )}
+    </div>
+  ))
+
+  const suggestions = (SUGGESTIONS[page] || DEFAULT_SUGGESTIONS).filter(q => moneyOn || !MONEY_CHIPS.has(q))
+  const welcomeMood = !online ? 'sleepy' : health.issues ? 'concerned' : health.items.length ? 'happy' : 'idle'
 
   return (
     <>
@@ -325,6 +369,7 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
         data-tutorial="help-chat-fab"
       >
         {open ? <X size={22} /> : <Tally mood={mood === 'thinking' ? 'thinking' : 'idle'} size={30} />}
+        {!open && health.issues > 0 && <span className="tally-fab-dot" aria-label={`${health.issues} things in your books need a look`} />}
       </button>
 
       {open && (
@@ -348,11 +393,19 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
           <div ref={scrollRef} className="tally-body">
             {messages.length === 0 && (
               <div className="tally-welcome">
-                <Tally mood={online ? 'idle' : 'sleepy'} size={92} />
+                <Tally mood={welcomeMood} size={92} />
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', marginTop: 6 }}>Hi, I'm Tally!</div>
                 <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.55, maxWidth: 270 }}>
                   I know this app inside out. Ask me how to do something, or about your own numbers. Let's make it tally.
                 </div>
+                {health.items.length > 0 && (
+                  <div className="tally-check">
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 6 }}>
+                      {health.issues ? 'Quick check: a few things need a look' : 'Quick check: your books look good'}
+                    </div>
+                    {checkList(health.items)}
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: 'var(--text-3)', margin: '12px 0 2px', fontWeight: 600, letterSpacing: 0.3 }}>
                   {PAGE_LABEL[page] ? `ON ${PAGE_LABEL[page].toUpperCase()} — TRY` : 'TRY ASKING'}
                 </div>
@@ -394,6 +447,7 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
                   {avatarSlot}
                   <div className="tally-bubble">
                     {isLastAndEmpty ? <ThinkingDots /> : renderMarkdownLite(m.text)}
+                    {m.check?.length > 0 && <div style={{ marginTop: 8 }}>{checkList(m.check)}</div>}
                     {links.length > 0 && !streaming && (
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>
                         {links.map(id => (
@@ -403,11 +457,11 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
                         ))}
                       </div>
                     )}
-                    {m.instant && (
+                    {(m.instant || m.computed) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-3)' }}>
-                          <Zap size={11} /> Instant answer
-                        </span>
+                        {m.computed
+                          ? <span className="tally-calc"><CheckCircle2 size={11} /> Calculated from your books</span>
+                          : <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-3)' }}><Zap size={11} /> Instant answer</span>}
                         {i === messages.length - 1 && (
                           <button className="btn btn-ghost btn-sm" style={{ fontSize: 11.5, padding: '3px 9px', marginLeft: 'auto' }} onClick={() => askAIInstead(i)} disabled={streaming}>
                             <Sparkles size={12} /> Not what you meant? Ask the AI

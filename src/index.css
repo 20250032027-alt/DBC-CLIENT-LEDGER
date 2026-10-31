@@ -985,6 +985,19 @@ tbody tr:hover .row-actions { opacity: 1; }
 }
 .tally-goto:hover { border-color: var(--accent); }
 .tally-input { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--border); background: var(--surface); }
+.tally-check {
+  width: 100%; text-align: left; margin-top: 12px; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.tally-check-item { display: flex; gap: 7px; align-items: flex-start; font-size: 12px; line-height: 1.45; color: var(--text-2); padding: 3px 0; }
+.tally-calc {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
+  color: var(--green); background: var(--green-dim); border-radius: 99px; padding: 2px 8px;
+}
+.tally-fab-dot {
+  position: absolute; top: 3px; right: 3px; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--amber); border: 2px solid var(--surface);
+}
 
 /* Phones: Tally takes the whole screen — a floating box is too cramped to read. */
 @media (max-width: 600px) {

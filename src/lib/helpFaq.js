@@ -20,6 +20,18 @@
 // must match exactly. Multi-word phrases match as a phrase.
 const FAQ = [
   {
+    id: 'what-can-you-do',
+    groups: [['what can you do', 'what can tally', 'what do you do', 'how can you help', 'what can i ask', 'ano kaya mo', 'ano ang kaya mo', 'paano ka makakatulong']],
+    answer: `I'm Tally, your ledger buddy! I can:
+
+- **Answer money questions** from your own books, like "How much did we spend on travel this month?", "What's our profit this year?" or "Magkano kita natin noong September?" I calculate these from your posted vouchers, the same way your reports do. I never guess a number.
+- **Check your books** for problems, like vouchers that don't balance, drafts left waiting, or overdue invoices. Just say "check my books."
+- **Give you a monthly summary**: ask "How did we do this month?"
+- **Explain how to do anything** in the app, step by step, and take you straight to the right page.
+
+Ask me in English, Filipino, or Taglish.`,
+  },
+  {
     id: 'create-voucher',
     goto: 'vouchers',
     groups: [['new', 'create', 'add', 'record', 'make', 'enter', 'gawa', 'gumawa', 'mag-record', 'input'], ['voucher', 'transaction', 'journal entry', 'expense', 'sale']],
