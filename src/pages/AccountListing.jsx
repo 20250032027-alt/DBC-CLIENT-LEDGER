@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate } from '../utils'
 import { BookOpen, ChevronDown, ChevronUp, Download, Search, X } from 'lucide-react'
+import TallyEmpty from '../components/TallyEmpty.jsx'
 
 function normalSide(type) {
   return (type === 'asset' || type === 'expense') ? 1 : -1
@@ -397,21 +398,11 @@ export default function AccountListing() {
 
       {accountSections.length === 0 ? (
         <div className="card">
-          <div className="empty-state">
-            <BookOpen size={36} color="var(--border2)" />
-            <div style={{ fontWeight: 600 }}>No transactions yet</div>
-            <div style={{ fontSize: 13 }}>Post vouchers to see the account listing</div>
-          </div>
+          <TallyEmpty title="No transactions yet">Once you post vouchers, every entry shows up here, grouped by account.</TallyEmpty>
         </div>
       ) : filtered.length === 0 ? (
         <div className="card">
-          <div className="empty-state">
-            <BookOpen size={36} color="var(--border2)" />
-            <div style={{ fontWeight: 600 }}>No accounts match your filters</div>
-            <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={clearFilters}>
-              <X size={13} /> Clear filters
-            </button>
-          </div>
+          <TallyEmpty mood="thinking" title="No accounts match your filters" actions={<button className="btn btn-ghost" onClick={clearFilters}><X size={13} /> Clear filters</button>} />
         </div>
       ) : (
         filtered.map((section, i) => (

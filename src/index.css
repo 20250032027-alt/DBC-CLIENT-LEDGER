@@ -896,6 +896,8 @@ tbody tr:hover .row-actions { opacity: 1; }
 }
 
 .empty-state svg { opacity: 0.35; }
+.empty-state svg.tally { opacity: 1; } /* Tally stays fully visible in empty states */
+.tally-empty { gap: 8px; text-align: center; padding: 48px 20px; }
 
 /* ════════════════════════════════════════════════════════════════
    ANIMATIONS

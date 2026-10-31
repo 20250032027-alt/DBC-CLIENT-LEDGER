@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTutorial } from '../lib/tutorial.jsx'
+import Tally from './Tally.jsx'
 import { X, ArrowRight, ArrowLeft, Check } from 'lucide-react'
 
 function useTargetRect(target) {
@@ -110,7 +111,10 @@ export default function TutorialSpotlight() {
           <X size={16} />
         </button>
 
-        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8, paddingRight: 24 }}>{currentStep.title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8, paddingRight: 24 }}>
+          <Tally size={30} />
+          <div style={{ fontSize: 17, fontWeight: 700 }}>{currentStep.title}</div>
+        </div>
         <div style={{ fontSize: 15, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 16 }}>{currentStep.body}</div>
 
         {/* Dots instead of "2 of 5" text — quicker to read at a glance, less to parse */}

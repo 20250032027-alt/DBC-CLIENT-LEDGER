@@ -35,7 +35,7 @@ export const SEGMENTS = [
       { type: 'spotlight', target: 'sidebar-nav', title: 'This is your menu', body: 'Everything you need is here. Vouchers is where you write down money in and money out.' },
       { type: 'spotlight', target: 'nav-dashboard', title: 'Dashboard', body: 'This page shows you a quick summary. Tap it any time to see how things look.' },
       { type: 'spotlight', target: 'nav-settings', title: 'Settings', body: 'You can change how the app looks here. You can also come back to this tutorial any time from here.' },
-      { type: 'spotlight', target: 'help-chat-fab', title: 'Need help later?', body: "Tap this little bubble any time. You can ask it anything, in your own words, and it will help you." },
+      { type: 'spotlight', target: 'help-chat-fab', title: 'Meet Tally', body: "That's me! Tap here any time. Ask me anything in your own words, ask how the month is going, or say \"check my books\" and I'll look for problems." },
     ],
   },
   {
@@ -55,7 +55,7 @@ export const SEGMENTS = [
     description: 'Where to go if you get stuck',
     requiresPage: null,
     steps: [
-      { type: 'spotlight', target: 'help-chat-fab', title: 'Remember this bubble', body: "If you ever forget how something works, just tap here and ask. No question is a silly question." },
+      { type: 'spotlight', target: 'help-chat-fab', title: "I'm always here", body: "If you ever forget how something works, tap me and ask. I can also explain any page, and remind you when a tax deadline is coming up. No question is a silly question." },
       { type: 'info', title: "All done!", body: "You can watch this tutorial again any time. Just go to Settings and tap Open Tutorial." },
     ],
   },

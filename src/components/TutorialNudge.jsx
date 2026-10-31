@@ -1,5 +1,6 @@
 import { useTutorial } from '../lib/tutorial.jsx'
-import { GraduationCap, X } from 'lucide-react'
+import { X } from 'lucide-react'
+import Tally from './Tally.jsx'
 import { showToast } from '../lib/toast'
 
 // The specific, gentle first-time ask — shows once, ever, unless someone
@@ -22,16 +23,11 @@ export default function TutorialNudge() {
       padding: '16px 18px', animation: 'message-in 0.25s ease',
     }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: '50%', background: 'var(--accent-glow)',
-          display: 'grid', placeItems: 'center', flexShrink: 0,
-        }}>
-          <GraduationCap size={17} color="var(--accent)" />
-        </div>
+        <Tally size={42} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>New here?</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Hi, I'm Tally! New here?</div>
           <div style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.5 }}>
-            Want a quick look around? It only takes a few minutes, and nothing you do is saved for real.
+            Want me to show you around? It only takes a few minutes, and nothing you do is saved for real.
           </div>
         </div>
         <button className="icon-btn" onClick={handleNotNow} style={{ flexShrink: 0 }} title="Not now">

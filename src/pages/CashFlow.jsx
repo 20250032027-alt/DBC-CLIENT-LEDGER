@@ -4,6 +4,7 @@ import { useTheme } from '../lib/theme.jsx'
 import { fmt, fmtDate, postedOnly } from '../utils'
 import { ArrowUpRight, ArrowDownRight, Waves, Download, X } from 'lucide-react'
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
+import TallyEmpty from '../components/TallyEmpty.jsx'
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
@@ -391,10 +392,7 @@ export default function CashFlow() {
 
       {!hasPeriodData ? (
         <div className="card">
-          <div className="empty-state">
-            <Waves size={28} color="var(--border2)" />
-            <div style={{ fontWeight: 600 }}>No cash transactions in this period</div>
-          </div>
+          <TallyEmpty mood="thinking" title="No cash transactions in this period">Try a different date range.</TallyEmpty>
         </div>
       ) : (
         <div className="two-col" style={{ alignItems: 'start' }}>

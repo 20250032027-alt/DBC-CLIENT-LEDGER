@@ -7,6 +7,7 @@ import { Plus, X, Trash2, Pencil, BookOpen, Sparkles, Search } from 'lucide-reac
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts'
+import TallyEmpty from '../components/TallyEmpty.jsx'
 
 const TYPES = [
   { value: 'asset', label: 'Asset' },
@@ -219,19 +220,12 @@ export default function ChartOfAccounts() {
 
       {accounts.length === 0 ? (
         <div className="card">
-          <div className="empty-state">
-            <BookOpen size={36} color="var(--border2)" />
-            <div style={{ fontWeight: 600 }}>No accounts yet</div>
-            <div style={{ fontSize: 13 }}>Start from a standard starter chart, or add accounts one by one</div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={seedDefaultAccounts}>
-                <Sparkles size={14} /> Use Starter Chart of Accounts
-              </button>
-              <button className="btn btn-ghost" onClick={() => setModal('new')}>
-                <Plus size={14} /> Add One Manually
-              </button>
-            </div>
-          </div>
+          <TallyEmpty title="Let's set up your accounts" actions={<>
+            <button className="btn btn-primary" onClick={seedDefaultAccounts}><Sparkles size={14} /> Use Starter Chart of Accounts</button>
+            <button className="btn btn-ghost" onClick={() => setModal('new')}><Plus size={14} /> Add One Manually</button>
+          </>}>
+            Every voucher, report and tax form is built on these. The starter chart gives you a standard list to begin with, and you can change it any time.
+          </TallyEmpty>
         </div>
       ) : (
         <>

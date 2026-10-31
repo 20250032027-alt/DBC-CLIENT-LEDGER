@@ -4,6 +4,7 @@ import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTi
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink, Lock } from 'lucide-react'
 import { showToast } from '../lib/toast'
 import { compressAttachment } from '../lib/compressAttachment'
+import TallyEmpty from '../components/TallyEmpty.jsx'
 
 // Today in the user's own timezone (toISOString alone gives the UTC date,
 // which is still "yesterday" in the Philippines until 8 AM).
@@ -2329,13 +2330,16 @@ export default function Vouchers() {
 
       {filtered.length === 0 ? (
         <div className="card">
-          <div className="empty-state">
-            <FileText size={36} color="var(--border2)" />
-            <div style={{ fontWeight: 600 }}>No vouchers found</div>
-            <button className="btn btn-primary" onClick={() => setModal('new')}>
-              <Plus size={14} /> New Voucher
-            </button>
-          </div>
+          {vouchers.length === 0 ? (
+            <TallyEmpty title="No vouchers yet" actions={<>
+              <button className="btn btn-primary" onClick={() => setModal('new')}><Plus size={14} /> New Voucher</button>
+              <button className="btn btn-ghost" onClick={() => setShowImport(true)}>Bulk Import</button>
+            </>}>
+              Vouchers are where you record money coming in and going out. Make your first one, or bring in many at once from Excel.
+            </TallyEmpty>
+          ) : (
+            <TallyEmpty mood="thinking" title="No vouchers match your search">Try a different search or voucher type.</TallyEmpty>
+          )}
         </div>
       ) : (
         <div className="table-wrap">

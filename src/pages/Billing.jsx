@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate, nextBillNumber, normalizeTin } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, Receipt, CheckCircle, Clock, AlertTriangle, Printer } from 'lucide-react'
+import TallyEmpty from '../components/TallyEmpty.jsx'
 
 // ── Print Invoice ────────────────────────────────────────────────────────────
 function printInvoice(bill, settings, clients = []) {
@@ -711,13 +712,13 @@ export default function Billing() {
 
       {filtered.length === 0 ? (
         <div className="card">
-          <div className="empty-state">
-            <Receipt size={36} color="var(--border2)" />
-            <div style={{ fontWeight: 600 }}>No invoices found</div>
-            <button className="btn btn-primary" onClick={() => setModal('new')}>
-              <Plus size={14} /> New Invoice
-            </button>
-          </div>
+          {bills.length === 0 ? (
+            <TallyEmpty title="No invoices yet" actions={<button className="btn btn-primary" onClick={() => setModal('new')}><Plus size={14} /> New Invoice</button>}>
+              Bill your clients from here. I'll let you know in the chat when one goes past its due date.
+            </TallyEmpty>
+          ) : (
+            <TallyEmpty mood="thinking" title="No invoices match your filters">Try a different search or status.</TallyEmpty>
+          )}
         </div>
       ) : (
         <div className="table-wrap">

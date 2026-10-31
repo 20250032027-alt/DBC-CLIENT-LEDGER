@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, postedOnly, buildLedger, buildFinancialSections as buildSections, foldBillingIntoSections, excludeClosingEntries } from '../utils'
 import { BarChart3, X, Download } from 'lucide-react'
+import TallyEmpty from '../components/TallyEmpty.jsx'
 
 async function exportFinancialReportToExcel({
   currentAssets, fixedAssets, currentLiabilities, equity,
@@ -308,11 +309,7 @@ export default function FinancialCondition() {
 
       {!hasData ? (
         <div className="card">
-          <div className="empty-state">
-            <BarChart3 size={36} color="var(--border2)" />
-            <div style={{ fontWeight: 600 }}>No financial data yet</div>
-            <div style={{ fontSize: 13 }}>Post vouchers and invoices to generate reports</div>
-          </div>
+          <TallyEmpty title="No financial data yet">Post vouchers and invoices, and your Balance Sheet and Income Statement build themselves here.</TallyEmpty>
         </div>
       ) : (
         <>

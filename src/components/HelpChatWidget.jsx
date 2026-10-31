@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Send, Loader2, Flag, Zap, Sparkles, ArrowRight, RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react'
+import { X, Send, Loader2, Flag, Zap, Sparkles, ArrowRight, RotateCcw, CheckCircle2, AlertCircle, CalendarClock } from 'lucide-react'
 import { supabase, supabaseUrl } from '../lib/supabase'
 import { useStore } from '../store/useStore.jsx'
 import { buildDataSummary } from '../utils'
@@ -10,6 +10,8 @@ import { findInstantAnswer } from '../lib/helpFaq'
 import Tally from './Tally.jsx'
 import { answerNumbers } from '../lib/tallyNumbers'
 import { checkBooks } from '../lib/tallyHealth'
+import { PAGE_GUIDE, EXPLAIN_PAGE } from '../lib/pageGuide'
+import { upcomingDeadlines, DEADLINE_QUESTION, DEADLINE_CAVEAT } from '../lib/taxDeadlines'
 
 // ── Minimal markdown rendering — no new dependency ──
 // The model's answers use a small, predictable set of formatting: **bold**,
@@ -130,6 +132,9 @@ const SUGGESTIONS = {
   'account-listing': ['Biggest expenses this month?', 'How do I export to Excel?'],
   billing: ['Any unpaid invoices?', 'How much cash do we have?'],
   'closing-books': ['How do I close the books?', 'How do I reopen a closed period?'],
+  'tax-return': ['When is the next tax deadline?'],
+  'tax-report': ['When is the next tax deadline?'],
+  'ewt-report': ['When is the next tax deadline?'],
   settings: ['How do I add a team member?', 'How do I turn on dark mode?', 'Where is the tutorial?'],
 }
 const DEFAULT_SUGGESTIONS = ['How did we do this month?', 'How do I record a transaction?', 'Paano mag post ng voucher?']
@@ -162,6 +167,11 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
   // The quick check of the books, recomputed whenever the books change.
   const health = useMemo(() => checkBooks({ vouchers, accounts, bills, periodClosings }), [vouchers, accounts, bills, periodClosings])
   const moneyOn = settings?.helpAssistantDataEnabled !== false
+  // Upcoming BIR due dates for the returns this app prepares (counts no money,
+  // so shown even when peso figures are turned off).
+  const deadlines = useMemo(() => upcomingDeadlines({ settings, vouchers }), [settings, vouchers])
+  const soon = deadlines.filter(d => d.daysLeft <= 30).slice(0, 3)
+  const urgent = deadlines.some(d => d.daysLeft <= 7)
   const [open, setOpen] = useState(false)
   // The conversation is kept on this device per account (and per Team
   // Member), so closing the chat or reloading the page doesn't lose it.
@@ -214,12 +224,27 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
     setInput('')
     const withQuestion = [...messages, { role: 'user', text }]
 
+    // "Explain this page" — about whichever page they're on right now.
+    if (EXPLAIN_PAGE.test(text) && PAGE_GUIDE[page]) {
+      setMessages([...withQuestion, { role: 'model', text: PAGE_GUIDE[page], instant: true }])
+      return
+    }
+
     // Common "how do I…" questions are answered instantly, right here,
     // without spending any free AI quota. Anything about the person's own
     // numbers is never answered this way (see helpFaq.js).
     const instant = findInstantAnswer(text)
     if (instant) {
       setMessages([...withQuestion, { role: 'model', text: instant.answer, instant: true, goto: instant.goto || null }])
+      return
+    }
+    if (DEADLINE_QUESTION.test(text)) {
+      const next = upcomingDeadlines({ settings, vouchers }, new Date(), 90)
+      const lines = next.map(d => `- **${d.form}** ${d.title}, ${d.period}: due **${d.dueLabel}** (${d.whenText})`
+        + (d.movedLabel ? ` — falls on a weekend, so BIR moves it to ${d.movedLabel}` : '') + (d.note ? `. ${d.note}` : ''))
+      setMessages([...withQuestion, { role: 'model', instant: true, goto: next[0]?.goto || null,
+        text: (next.length ? `Here's what's coming up in the next 90 days:\n\n${lines.join('\n')}` : 'No filing deadlines in the next 90 days for the returns I keep track of.')
+          + `\n\n${DEADLINE_CAVEAT}` }])
       return
     }
     // Money questions are CALCULATED from the books with the same functions
@@ -356,7 +381,25 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
     </div>
   ))
 
-  const suggestions = (SUGGESTIONS[page] || DEFAULT_SUGGESTIONS).filter(q => moneyOn || !MONEY_CHIPS.has(q))
+  const deadlineCard = soon.length > 0 && (
+
+                  <div className="tally-check">
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 6 }}>Tax deadlines coming up</div>
+                    {soon.map(d => (
+                      <div key={d.form + d.due} className="tally-check-item">
+                        <CalendarClock size={14} color={d.daysLeft <= 7 ? 'var(--amber)' : 'var(--text-3)'} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span style={{ flex: 1 }}>
+                          <b style={{ color: 'var(--text-1)' }}>{d.form}</b> for {d.period.split(' (')[0]} — due {d.dueLabel} ({d.whenText})
+                          {d.movedLabel && <span style={{ display: 'block', fontSize: 11, color: 'var(--text-3)' }}>Falls on a weekend; BIR moves it to {d.movedLabel}</span>}
+                        </span>
+                        {d.goto !== page && <button className="tally-goto" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => goTo(d.goto)}>Open <ArrowRight size={11} /></button>}
+                      </div>
+                    ))}
+                  </div>
+  )
+
+  const suggestions = [...(PAGE_GUIDE[page] ? ['Explain this page'] : []), ...(SUGGESTIONS[page] || DEFAULT_SUGGESTIONS)]
+    .filter(q => moneyOn || !MONEY_CHIPS.has(q)).slice(0, 4)
   const welcomeMood = !online ? 'sleepy' : health.issues ? 'concerned' : health.items.length ? 'happy' : 'idle'
 
   return (
@@ -369,7 +412,7 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
         data-tutorial="help-chat-fab"
       >
         {open ? <X size={22} /> : <Tally mood={mood === 'thinking' ? 'thinking' : 'idle'} size={30} />}
-        {!open && health.issues > 0 && <span className="tally-fab-dot" aria-label={`${health.issues} things in your books need a look`} />}
+        {!open && (health.issues > 0 || urgent) && <span className="tally-fab-dot" aria-label="Something needs a look — open Tally" />}
       </button>
 
       {open && (
@@ -398,6 +441,7 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
                 <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.55, maxWidth: 270 }}>
                   I know this app inside out. Ask me how to do something, or about your own numbers. Let's make it tally.
                 </div>
+                {urgent && deadlineCard /* a deadline within a week comes first */}
                 {health.items.length > 0 && (
                   <div className="tally-check">
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 6 }}>
@@ -406,6 +450,7 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
                     {checkList(health.items)}
                   </div>
                 )}
+                {!urgent && deadlineCard}
                 <div style={{ fontSize: 11, color: 'var(--text-3)', margin: '12px 0 2px', fontWeight: 600, letterSpacing: 0.3 }}>
                   {PAGE_LABEL[page] ? `ON ${PAGE_LABEL[page].toUpperCase()} — TRY` : 'TRY ASKING'}
                 </div>

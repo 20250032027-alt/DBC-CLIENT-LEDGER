@@ -27,6 +27,8 @@ const FAQ = [
 - **Answer money questions** from your own books, like "How much did we spend on travel this month?", "What's our profit this year?" or "Magkano kita natin noong September?" I calculate these from your posted vouchers, the same way your reports do. I never guess a number.
 - **Check your books** for problems, like vouchers that don't balance, drafts left waiting, or overdue invoices. Just say "check my books."
 - **Give you a monthly summary**: ask "How did we do this month?"
+- **Remind you of tax deadlines** for the returns this app helps prepare. Ask "When is the next tax deadline?"
+- **Explain any page**: just tap "Explain this page."
 - **Explain how to do anything** in the app, step by step, and take you straight to the right page.
 
 Ask me in English, Filipino, or Taglish.`,

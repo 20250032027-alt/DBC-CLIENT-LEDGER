@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmtDate, fmt, formatTin, normalizeTin } from '../utils'
 import { Plus, Search, Trash2, Pencil, User, Building2, Phone, Mail, MapPin, X } from 'lucide-react'
+import TallyEmpty from '../components/TallyEmpty.jsx'
 
 function ClientModal({ client, onClose, onSave }) {
   const [form, setForm] = useState(client || {
@@ -134,14 +135,13 @@ export default function Clients() {
 
       {filtered.length === 0 ? (
         <div className="card">
-          <div className="empty-state">
-            <User size={36} color="var(--border2)" />
-            <div style={{ fontWeight: 600 }}>No clients found</div>
-            <div style={{ fontSize: 13 }}>Add your first client to get started</div>
-            <button className="btn btn-primary" onClick={() => setModal('new')}>
-              <Plus size={14} /> Add Client
-            </button>
-          </div>
+          {clients.length === 0 ? (
+            <TallyEmpty title="No clients yet" actions={<button className="btn btn-primary" onClick={() => setModal('new')}><Plus size={14} /> Add Client</button>}>
+              Add the people and businesses you work with, so you can pick them on vouchers and invoices.
+            </TallyEmpty>
+          ) : (
+            <TallyEmpty mood="thinking" title="No clients match your search">Try a different name, or check the spelling.</TallyEmpty>
+          )}
         </div>
       ) : (
         <div className="table-wrap">
