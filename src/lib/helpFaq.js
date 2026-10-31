@@ -21,6 +21,7 @@
 const FAQ = [
   {
     id: 'create-voucher',
+    goto: 'vouchers',
     groups: [['new', 'create', 'add', 'record', 'make', 'enter', 'gawa', 'gumawa', 'mag-record', 'input'], ['voucher', 'transaction', 'journal entry', 'expense', 'sale']],
     exclude: ['bulk', 'import', 'excel', 'many', 'template'],
     answer: `Go to **Vouchers** and click **New Voucher**.
@@ -32,6 +33,7 @@ const FAQ = [
   },
   {
     id: 'post-voucher',
+    goto: 'vouchers',
     groups: [['post', 'i-post', 'finalize', 'finalise'], ['voucher', 'draft', 'entry', 'entries', 'transaction']],
     answer: `Find the voucher in **Vouchers** and click the **checkmark icon** on its row. The checkmark only shows on drafts.
 
@@ -39,6 +41,7 @@ You'll be asked to confirm, and if a deletion password is set in Settings, to en
   },
   {
     id: 'edit-voucher',
+    goto: 'vouchers',
     groups: [['edit', 'change', 'fix', 'correct', 'update', 'modify', 'palitan', 'baguhin', 'ayusin'], ['voucher', 'entry', 'entries', 'transaction']],
     answer: `In **Vouchers**, click the **pencil icon** on the voucher's row.
 
@@ -46,6 +49,7 @@ If you see a **lock icon** instead, the voucher is inside a closed accounting pe
   },
   {
     id: 'delete-voucher',
+    goto: 'vouchers',
     groups: [['delete', 'remove', 'erase', 'burahin', 'tanggalin'], ['voucher', 'entry', 'transaction']],
     exclude: ['all my data', 'everything', 'attachment', 'receipt', 'file'],
     answer: `In **Vouchers**, click the **trash icon** on the voucher's row. To confirm, type the exact voucher number, plus the deletion password if one is set in Settings. This is on purpose, so financial records aren't deleted by accident.
@@ -54,6 +58,7 @@ If you see a **lock icon** instead, the voucher is in a closed period. Reopen it
   },
   {
     id: 'attach-receipt',
+    goto: 'vouchers',
     groups: [['attach', 'attachment', 'upload', 'ilagay'], ['receipt', 'photo', 'picture', 'file', 'document', 'scan', 'pdf', 'image', 'resibo', 'voucher']],
     exclude: ['bulk', 'import', 'excel', 'logo', 'report a', 'screenshot'],
     answer: `Open the voucher in **Vouchers** and use its **Attachments** section. You can attach PDFs or photos (JPG, PNG, WEBP), up to 10 MB each. Big phone photos are shrunk automatically when uploaded.
@@ -64,6 +69,7 @@ Two things to know:
   },
   {
     id: 'bulk-import',
+    goto: 'vouchers',
     groups: [['bulk', 'import', 'mass upload', 'many vouchers', 'from excel', 'spreadsheet']],
     answer: `Go to **Vouchers** and click **Bulk Import**.
 
@@ -80,6 +86,7 @@ Good to know:
   },
   {
     id: 'add-account',
+    goto: 'accounts',
     groups: [['add', 'create', 'new', 'gawa', 'gumawa', 'make'], ['account']],
     exclude: ['team', 'member', 'user', 'login', 'sign up', 'signup', 'staff', 'employee', 'email'],
     answer: `Go to **Chart of Accounts** and click **New Account**. Give it a name, code, and type: **Asset, Liability, Equity, Revenue,** or **Expense**. The type decides which reports and sections the account shows up in.
@@ -88,6 +95,7 @@ Starting from nothing? If your chart is empty, there's a **Use Starter Chart of 
   },
   {
     id: 'closing-books',
+    goto: 'closing-books',
     groups: [['close', 'closing', 'year-end', 'year end', 'month-end', 'month end'], ['book', 'books', 'period', 'month', 'year', 'accounts']],
     exclude: ['reopen', 'open again', 'undo', 'unlock'],
     answer: `Go to **Closing Books** (under Accounting in the sidebar).
@@ -101,6 +109,7 @@ This posts a closing voucher that zeroes out Revenue and Expense into equity, an
   },
   {
     id: 'reopen-period',
+    goto: 'closing-books',
     groups: [['reopen', 're-open', 'open again', 'unlock', 'undo'], ['period', 'closing', 'books', 'month', 'year', 'locked', 'voucher']],
     answer: `Go to **Closing Books**, expand the closing under **Closing History**, and click **Reopen This Period**.
 
@@ -108,6 +117,7 @@ Only the **most recent** closing can be reopened, so reopen later ones first. Re
   },
   {
     id: 'team-members',
+    goto: 'settings',
     groups: [['team', 'member', 'staff', 'employee', 'another person', 'other people', 'kasama', 'helper', 'assistant user'], ['add', 'invite', 'create', 'access', 'permission', 'restrict', 'allow', 'give', 'set up', 'setup']],
     answer: `Go to **Settings → Team Members**. Each person gets their own name and password, and can be marked **Admin** (everything) or given only certain tabs to **edit**. Other tabs stay visible but view-only.
 
@@ -115,12 +125,14 @@ Worth knowing: everyone still shares the same login underneath. This prevents ac
   },
   {
     id: 'deletion-password',
+    goto: 'settings',
     groups: [['password'], ['delete', 'deletion', 'deleting', 'posting', 'set', 'change']],
     exclude: ['login', 'log in', 'sign in', 'email', 'forgot', 'team', 'member'],
     answer: `The deletion password is in **Settings → Data**. When it's set, the app asks for it before deleting or posting a voucher, on top of the usual confirmation.`,
   },
   {
     id: 'appearance',
+    goto: 'settings',
     groups: [['dark mode', 'light mode', 'dark', 'theme', 'accent', 'contrast', 'text size', 'font', 'bigger', 'larger', 'too small', 'hard to read', 'compact', 'density', 'comfortable', 'collapse sidebar', 'colors', 'colour', 'color']],
     exclude: ['logo', 'report', 'voucher', 'account', 'screenshot', 'file', 'photo', 'attachment', 'upload'],
     answer: `Go to **Settings → Appearance**. There you can switch **Light/Dark** (plus a True Black option), turn **High Contrast** on or off, choose **Density** (Compact, Standard, or Comfortable for bigger text and spacing), pick an **accent color**, and collapse the sidebar to icons.
@@ -129,6 +141,7 @@ These settings are saved per device, so each person can set things up their own 
   },
   {
     id: 'tutorial',
+    goto: 'settings',
     groups: [['tutorial', 'walkthrough', 'tour', 'onboarding', 'show me around']],
     answer: `Go to **Settings → Tutorial** and click **Open Tutorial**. You can pick any part, in any order, and the practice parts never touch your real data.`,
   },
@@ -143,6 +156,7 @@ A screenshot of the page is attached automatically. You can retake it, upload yo
   },
   {
     id: 'install-app',
+    goto: 'settings',
     groups: [['install', 'home screen', 'homescreen', 'desktop app', 'phone app', 'as an app']],
     answer: `Go to **Settings → Install App** and follow the steps for your device. Once installed, DBC Ledger opens like a normal app from your home screen or desktop.`,
   },
@@ -161,6 +175,7 @@ The one exception is **attaching files** to a voucher, which needs a live connec
   },
   {
     id: 'print-voucher',
+    goto: 'vouchers',
     groups: [['print', 'printout', 'i-print'], ['voucher']],
     answer: `In **Vouchers**, click the **printer icon** on the voucher's row to get a printable copy.`,
   },
@@ -201,5 +216,5 @@ export function findInstantAnswer(question) {
     if (!entry.groups.every(group => group.some(t => hasTerm(norm, words, t)))) continue
     if (!best || entry.groups.length > best.groups.length) best = entry
   }
-  return best ? { id: best.id, answer: best.answer } : null
+  return best ? { id: best.id, answer: best.answer, goto: best.goto || null } : null
 }

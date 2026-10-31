@@ -954,6 +954,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
 
   return (
     <StoreContext.Provider value={{
+      userId,
       clients, vouchers, bills, accounts, templates, settings, loading, error,
       menuItems, posSales,
       rawMaterials, rawMaterialEntries,

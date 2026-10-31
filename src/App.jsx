@@ -532,7 +532,7 @@ function AppShell({ userEmail, bypassApprovalGate }) {
           </div>
         </main>
 
-        <HelpChatWidget page={page} activeMember={activeMember} />
+        <HelpChatWidget page={page} activeMember={activeMember} onNavigate={navigate} />
 
         {!bypassApprovalGate && (
           <>
