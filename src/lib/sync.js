@@ -120,7 +120,21 @@ const PERMANENT_ERROR_CODES = new Set([
   '23502', // not_null_violation
   '23514', // check_violation
   '22P02', // invalid_text_representation
+  'PGRST205', // table doesn't exist in the database (see missingTables below)
+  '42P01', // undefined_table
 ])
+
+// Tables that exist in the app's code but not in this database — e.g. the
+// POS tables (menu_items, pos_sales), whose feature is switched off and
+// whose migration was never run. Asking for them every pass failed every
+// pass, which marked EVERY sync as an error and kept the sync badge on
+// "retrying" even when everything else had synced fine. Now a missing
+// table is noted once and skipped for the rest of the session; a page
+// reload checks again, so creating the table later just works.
+const missingTables = new Set()
+function isMissingTable(error) {
+  return !!error && (error.code === 'PGRST205' || error.code === '42P01' || /could not find the table/i.test(error.message || ''))
+}
 
 function isPermanentError(error) {
   return !!(error && error.code && PERMANENT_ERROR_CODES.has(error.code))
@@ -204,9 +218,15 @@ export async function syncNow() {
   // failing table silently stalled the entire sync pass, pull and push
   // alike, every 30 seconds, until that one table recovered.
   for (const table of Object.keys(TABLES)) {
+    if (missingTables.has(table)) continue
     try {
       await pullTable(table)
     } catch (e) {
+      if (isMissingTable(e)) {
+        missingTables.add(table)
+        console.info(`Sync: skipping ${table} — its table isn't set up in the database (an optional feature that isn't in use).`)
+        continue
+      }
       hadError = true
       console.error(`Sync: pull failed for ${table}, will retry next pass:`, e.message)
     }

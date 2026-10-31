@@ -20,6 +20,13 @@
 // must match exactly. Multi-word phrases match as a phrase.
 const FAQ = [
   {
+    id: 'who-are-you',
+    groups: [['your name', 'who are you', 'what are you', 'are you a bot', 'are you ai', 'sino ka', 'pangalan mo', 'ano ka']],
+    answer: `I'm **Tally**, your ledger buddy! I'm the assistant built into this app. I can answer questions about how the app works, calculate figures from your own books, check your books for problems, and remind you of tax deadlines.
+
+Ask me anything, in English, Filipino, or Taglish. Try "what can you do?" to see everything.`,
+  },
+  {
     id: 'what-can-you-do',
     groups: [['what can you do', 'what can tally', 'what do you do', 'how can you help', 'what can i ask', 'ano kaya mo', 'ano ang kaya mo', 'paano ka makakatulong']],
     answer: `I'm Tally, your ledger buddy! I can:
@@ -211,7 +218,19 @@ function normalize(text) {
 }
 
 function hasTerm(norm, words, term) {
-  if (term.includes(' ')) return norm.includes(' ' + term + ' ') || norm.includes(' ' + term)
+  // Multi-word phrases: whole words in a row, with the same rule as single
+  // words for the LAST one (4+ letters may be the start of a longer word, so
+  // "chart of account" still matches "chart of accounts"). The old check
+  // allowed ANY letters after the phrase, so "ano ka" matched "ano kaya"
+  // and "sino ka" matched "sino kasi" — wrong answers to real questions.
+  if (term.includes(' ')) {
+    const tw = term.split(' ')
+    for (let i = 0; i + tw.length <= words.length; i++) {
+      const ok = tw.every((t, j) => j < tw.length - 1 ? words[i + j] === t : (t.length >= 4 ? words[i + j].startsWith(t) : words[i + j] === t))
+      if (ok) return true
+    }
+    return false
+  }
   if (term.length >= 4) return words.some(w => w.startsWith(term))
   return words.includes(term)
 }
