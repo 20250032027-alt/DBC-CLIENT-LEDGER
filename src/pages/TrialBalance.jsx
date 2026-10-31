@@ -1,7 +1,7 @@
 import { useState, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate, postedOnly } from '../utils'
-import { Scale, CheckCircle, AlertCircle, Download, ChevronDown, ChevronUp } from 'lucide-react'
+import { Scale, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
 function buildTrialBalance(vouchers) {
   const accounts = {}

@@ -29,6 +29,7 @@ const FAQ = [
 - **Give you a monthly summary**: ask "How did we do this month?"
 - **Remind you of tax deadlines** for the returns this app helps prepare. Ask "When is the next tax deadline?"
 - **Explain any page**: just tap "Explain this page."
+- **Talk instead of type**: tap the **mic** next to the message box, speak in English, Filipino or Taglish, and check the text before sending.
 - **Explain how to do anything** in the app, step by step, and take you straight to the right page.
 
 Ask me in English, Filipino, or Taglish.`,
@@ -163,7 +164,7 @@ These settings are saved per device, so each person can set things up their own 
     id: 'report-problem',
     groups: [['report'], ['problem', 'bug', 'issue', 'error', 'broken', 'not working', 'mali', 'sira']],
     answer: `Two ways:
-- Click the **flag button** in the bottom-right corner, next to this chat bubble.
+- Click the **flag button** in the bottom-right corner, next to Tally's button.
 - Or **highlight any text** on the page and click the **Report this** pill that appears.
 
 A screenshot of the page is attached automatically. You can retake it, upload your own instead, or remove it before sending.`,

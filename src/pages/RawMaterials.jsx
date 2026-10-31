@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, verifySecret } from '../utils'
-import { Plus, X, Pencil, Trash2, Search, Lock, Loader2 } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, Search, Lock } from 'lucide-react'
 import { showToast } from '../lib/toast'
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'pc', 'sack', 'bag', 'box', 'roll', 'bottle', 'pack']

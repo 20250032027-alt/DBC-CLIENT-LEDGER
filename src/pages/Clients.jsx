@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmtDate, fmt, formatTin, normalizeTin } from '../utils'
-import { Plus, Search, Trash2, Pencil, User, Building2, Phone, Mail, MapPin, X } from 'lucide-react'
+import { Plus, Search, Trash2, Pencil, User, Building2, Phone, Mail, X } from 'lucide-react'
 import TallyEmpty from '../components/TallyEmpty.jsx'
 
 function ClientModal({ client, onClose, onSave }) {

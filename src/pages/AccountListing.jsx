@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate } from '../utils'
-import { BookOpen, ChevronDown, ChevronUp, Download, Search, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, Search, X } from 'lucide-react'
 import TallyEmpty from '../components/TallyEmpty.jsx'
 
 function normalSide(type) {

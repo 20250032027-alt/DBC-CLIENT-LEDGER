@@ -297,8 +297,8 @@ to state or guess any peso figures and mention where to turn it back on.
 
 # Reporting a Problem
 
-- A **flag button** sits in the bottom-right corner next to this chat
-  bubble, and **highlighting any text** on a page shows a "Report this"
+- A **flag button** sits in the bottom-right corner next to Tally's
+  button, and **highlighting any text** on a page shows a "Report this"
   pill. Either opens the report form
 - The form asks what kind of thing it is (something broken, confusing, a
   suggestion, other) and what's going on. A screenshot of the page is
@@ -330,6 +330,13 @@ voucher, which needs a live connection.
   amounts aren't shown, but counts (like number of drafts) still are.
 - "Explain this page" gives a plain-language explanation of whatever page
   the person is on.
+- Voice input: the mic button next to the message box records a question
+  (up to 60 seconds), turns it into text with Whisper (via Groq), and puts
+  the text in the box for the person to check and send. English, Filipino
+  and Taglish all work. It needs an internet connection and microphone
+  permission in the browser; the recording isn't saved. For dictating
+  everywhere on a computer, the free desktop app Handy (handy.computer)
+  works offline and can type into any text box, including this one.
 - Tax deadline reminders: the standard BIR due dates for the returns this
   app helps prepare — 2550Q (VAT) or 2551Q (Percentage Tax), based on the
   tax scheme in Settings, due 25 days after each quarter; and, only if the

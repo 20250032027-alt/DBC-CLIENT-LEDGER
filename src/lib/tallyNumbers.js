@@ -119,7 +119,6 @@ function matchAccount(q, accounts, prefer) {
   return best?.account || null
 }
 
-const pct = (a, b) => (b ? Math.round(((a - b) / Math.abs(b)) * 100) : null)
 function compare(cur, prev, label, currency) {
   if (prev == null || label == null) return ''
   const diff = cur - prev

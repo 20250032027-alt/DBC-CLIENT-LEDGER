@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Send, Loader2, Flag, Zap, Sparkles, ArrowRight, RotateCcw, CheckCircle2, AlertCircle, CalendarClock } from 'lucide-react'
+import { X, Send, Loader2, Flag, Zap, Sparkles, ArrowRight, RotateCcw, CheckCircle2, AlertCircle, CalendarClock, Mic, Square } from 'lucide-react'
 import { supabase, supabaseUrl } from '../lib/supabase'
 import { useStore } from '../store/useStore.jsx'
 import { buildDataSummary } from '../utils'
@@ -170,8 +170,10 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
   // Upcoming BIR due dates for the returns this app prepares (counts no money,
   // so shown even when peso figures are turned off).
   const deadlines = useMemo(() => upcomingDeadlines({ settings, vouchers }), [settings, vouchers])
-  const soon = deadlines.filter(d => d.daysLeft <= 30).slice(0, 3)
-  const urgent = deadlines.some(d => d.daysLeft <= 7)
+  // The welcome screen only shows deadlines within a week (at most two), so
+  // it fits without scrolling — the rest are one question away.
+  const soon = deadlines.filter(d => d.daysLeft <= 7).slice(0, 2)
+  const urgent = soon.length > 0
   const [open, setOpen] = useState(false)
   // The conversation is kept on this device per account (and per Team
   // Member), so closing the chat or reloading the page doesn't lose it.
@@ -203,10 +205,107 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
     return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
   }, [])
 
+  // ── Voice input ──
+  // Tap the mic, speak, tap again. The clip goes to the help-chat function,
+  // which turns it into text with Whisper; the text lands in the box for
+  // the person to check before sending. Needs a mic, MediaRecorder support
+  // and an internet connection; the button is hidden where it can't work.
+  const voiceSupported = typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== 'undefined'
+  const [recState, setRecState] = useState('idle') // 'idle' | 'recording' | 'transcribing'
+  const [recSeconds, setRecSeconds] = useState(0)
+  const recRef = useRef(null) // { recorder, stream, timer, cancelled }
+  const inputRef = useRef(null)
+  const focusAfterVoice = useRef(false)
+  const MAX_REC_SECONDS = 60
+  // After speaking, put the cursor in the box so Enter sends it straight away.
+  useEffect(() => {
+    if (recState === 'idle' && focusAfterVoice.current) { focusAfterVoice.current = false; inputRef.current?.focus() }
+  }, [recState])
+
+  function releaseMic() {
+    const r = recRef.current
+    if (!r) return
+    clearInterval(r.timer)
+    r.stream?.getTracks().forEach(t => t.stop())
+  }
+
+  async function startRecording() {
+    if (!online) { showToast('Voice needs an internet connection — you can still type.', 'error'); return }
+    let stream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (err) {
+      // Browsers name these differently; each gets a message that says what to actually do.
+      const name = err?.name || ''
+      showToast(
+        ['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(name) ? 'Microphone access is blocked. Allow it in your browser\'s site settings to talk to Tally.'
+          : ['NotFoundError', 'DevicesNotFoundError', 'OverconstrainedError'].includes(name) ? "I couldn't find a microphone. Plug one in, or type your question."
+          : ['NotReadableError', 'TrackStartError'].includes(name) ? 'Your microphone is busy in another app (like a video call). Close it there and try again.'
+          : "I couldn't start the microphone. Please type your question for now.", 'error')
+      return
+    }
+    const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'].find(t => window.MediaRecorder.isTypeSupported?.(t)) || ''
+    const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
+    const chunks = []
+    recorder.ondataavailable = e => { if (e.data?.size) chunks.push(e.data) }
+    recorder.onstop = () => {
+      const cancelled = recRef.current?.cancelled
+      releaseMic()
+      recRef.current = null
+      const blob = new Blob(chunks, { type: recorder.mimeType || type || 'audio/webm' })
+      if (cancelled || !blob.size) { setRecState('idle'); return }
+      transcribe(blob)
+    }
+    recRef.current = { recorder, stream, cancelled: false, timer: setInterval(() => setRecSeconds(n => n + 1), 1000) }
+    setRecSeconds(0)
+    setRecState('recording')
+    recorder.start()
+  }
+
+  function stopRecording(cancel = false) {
+    const r = recRef.current
+    if (!r) return
+    r.cancelled = cancel
+    if (r.recorder.state !== 'inactive') r.recorder.stop()
+    else { releaseMic(); recRef.current = null; setRecState('idle') }
+  }
+
+  // Auto-stop at the time limit; let go of the mic if the chat closes.
+  useEffect(() => { if (recState === 'recording' && recSeconds >= MAX_REC_SECONDS) stopRecording() }, [recSeconds, recState])
+  useEffect(() => { if (!open) stopRecording(true) }, [open])
+  useEffect(() => () => { if (recRef.current) { recRef.current.cancelled = true; try { recRef.current.recorder.stop() } catch { /* already stopped */ } releaseMic() } }, [])
+
+  async function transcribe(blob) {
+    setRecState('transcribing')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { showToast('Please sign in first, then I can listen.', 'error'); return }
+      const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'
+      const form = new FormData()
+      form.append('audio', blob, `speech.${ext}`)
+      const res = await fetch(`${supabaseUrl}/functions/v1/help-chat`, { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` }, body: form })
+      const data = await res.json().catch(() => ({}))
+      const text = (data.text || '').trim()
+      if (!res.ok || !text) {
+        const err = String(data.error || '')
+        showToast(res.ok ? "I didn't catch that — try again, a little closer to the mic."
+          : err.startsWith('VOICE_NOT_CONFIGURED') ? "Voice input isn't set up yet. Please type your question for now."
+          : (err.replace(/^[A-Z_]+:\s*/, '') || 'Voice input failed. Please try again.'), 'error')
+        return
+      }
+      setInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + text)
+      focusAfterVoice.current = true // focused once the box is enabled again (below)
+    } catch {
+      showToast("Couldn't reach the voice service. Check your connection and try again.", 'error')
+    } finally {
+      setRecState('idle')
+    }
+  }
+
   // Tally's face follows what's happening in the conversation.
   const last = messages[messages.length - 1]
-  const mood = !online ? 'sleepy' : streaming ? 'thinking' : last?.role === 'error' ? 'concerned' : 'idle'
-  const status = !online ? 'Offline — instant answers still work' : streaming ? 'Counting…' : 'Your ledger buddy'
+  const mood = !online ? 'sleepy' : (streaming || recState === 'transcribing') ? 'thinking' : last?.role === 'error' ? 'concerned' : 'idle'
+  const status = !online ? 'Offline — instant answers still work' : recState === 'recording' ? 'Listening…' : recState === 'transcribing' ? 'Writing down what you said…' : streaming ? 'Counting…' : 'Your ledger buddy'
 
   function goTo(pageId) {
     onNavigate?.(pageId)
@@ -271,6 +370,10 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
   // the same question to the AI instead.
   function askAIInstead(instantIndex) {
     if (streaming) return
+    if (!online) {
+      setMessages([...messages.slice(0, instantIndex), { role: 'model', text: "I can't reach my AI brain while you're offline. Ask me again once you're back online!" }])
+      return
+    }
     askAI(messages.slice(0, instantIndex))
   }
 
@@ -295,6 +398,7 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
       }
 
       const dataSummaryText = buildDataSummary({
+        periodClosings,
         vouchers, clients, bills, accounts, settings, activeMember, teamPages: TEAM_PAGES, page,
       })
 
@@ -381,22 +485,13 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
     </div>
   ))
 
-  const deadlineCard = soon.length > 0 && (
-
-                  <div className="tally-check">
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 6 }}>Tax deadlines coming up</div>
-                    {soon.map(d => (
-                      <div key={d.form + d.due} className="tally-check-item">
-                        <CalendarClock size={14} color={d.daysLeft <= 7 ? 'var(--amber)' : 'var(--text-3)'} style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span style={{ flex: 1 }}>
-                          <b style={{ color: 'var(--text-1)' }}>{d.form}</b> for {d.period.split(' (')[0]} — due {d.dueLabel} ({d.whenText})
-                          {d.movedLabel && <span style={{ display: 'block', fontSize: 11, color: 'var(--text-3)' }}>Falls on a weekend; BIR moves it to {d.movedLabel}</span>}
-                        </span>
-                        {d.goto !== page && <button className="tally-goto" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => goTo(d.goto)}>Open <ArrowRight size={11} /></button>}
-                      </div>
-                    ))}
-                  </div>
-  )
+  // One "Needs a look" card for the welcome screen: deadlines within a week
+  // first, then problems in the books — short wording, at most 3 rows, so
+  // the welcome screen fits without scrolling. "Check my books" shows all.
+  const lookItems = [
+    ...soon.map(d => ({ key: d.form + d.due, icon: 'deadline', text: `${d.form} for ${d.period.split(' (')[0]} due ${d.whenText === 'today' || d.whenText === 'tomorrow' ? d.whenText : d.dueLabel}`, goto: d.goto, action: 'Open' })),
+    ...health.items.filter(i => i.level === 'warn').map((i, k) => ({ key: 'w' + k, icon: 'warn', text: i.short || i.text, goto: i.goto, action: 'Fix' })),
+  ]
 
   const suggestions = [...(PAGE_GUIDE[page] ? ['Explain this page'] : []), ...(SUGGESTIONS[page] || DEFAULT_SUGGESTIONS)]
     .filter(q => moneyOn || !MONEY_CHIPS.has(q)).slice(0, 4)
@@ -436,24 +531,40 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
           <div ref={scrollRef} className="tally-body">
             {messages.length === 0 && (
               <div className="tally-welcome">
-                <Tally mood={welcomeMood} size={92} />
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', marginTop: 6 }}>Hi, I'm Tally!</div>
-                <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.55, maxWidth: 270 }}>
-                  I know this app inside out. Ask me how to do something, or about your own numbers. Let's make it tally.
-                </div>
-                {urgent && deadlineCard /* a deadline within a week comes first */}
-                {health.items.length > 0 && (
-                  <div className="tally-check">
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 6 }}>
-                      {health.issues ? 'Quick check: a few things need a look' : 'Quick check: your books look good'}
-                    </div>
-                    {checkList(health.items)}
+                {/* Laid out to fit the panel without scrolling: Tally beside a
+                    one-line greeting, the books check as one line when all is
+                    well, and suggestions as compact pills. */}
+                <div className="tally-hello">
+                  <Tally mood={welcomeMood} size={52} />
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)' }}>Hi, I'm Tally!</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>Ask me how to do something, or about your own numbers.</div>
                   </div>
-                )}
-                {!urgent && deadlineCard}
-                <div style={{ fontSize: 11, color: 'var(--text-3)', margin: '12px 0 2px', fontWeight: 600, letterSpacing: 0.3 }}>
-                  {PAGE_LABEL[page] ? `ON ${PAGE_LABEL[page].toUpperCase()} — TRY` : 'TRY ASKING'}
                 </div>
+                {lookItems.length > 0 ? (
+                  <div className="tally-check">
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>Needs a look</div>
+                    {lookItems.slice(0, 3).map(it => (
+                      <div key={it.key} className="tally-check-item">
+                        {it.icon === 'deadline'
+                          ? <CalendarClock size={14} color="var(--amber)" style={{ flexShrink: 0, marginTop: 1 }} />
+                          : <AlertCircle size={14} color="var(--amber)" style={{ flexShrink: 0, marginTop: 1 }} />}
+                        <span style={{ flex: 1 }}>{it.text}</span>
+                        {it.goto && it.goto !== page && (
+                          <button className="tally-goto" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => goTo(it.goto)}>
+                            {it.action} <ArrowRight size={11} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {lookItems.length > 3 && (
+                      <button className="tally-more" onClick={() => send('check my books')}>+{lookItems.length - 3} more — see everything</button>
+                    )}
+                  </div>
+                ) : health.items.length > 0 && (
+                  <div className="tally-ok-line"><CheckCircle2 size={14} /> Quick check: your books look good</div>
+                )}
+                <div className="tally-chips-label">{PAGE_LABEL[page] ? `On ${PAGE_LABEL[page]} — try` : 'Try asking'}</div>
                 <div className="tally-chips">
                   {suggestions.map(q => (
                     <button key={q} className="tally-chip" onClick={() => send(q)}>{q}</button>
@@ -521,16 +632,40 @@ export default function HelpChatWidget({ page, activeMember, onNavigate }) {
           </div>
 
           <div className="tally-input">
-            <input
-              className="form-input"
-              style={{ flex: 1, fontSize: 13 }}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-              placeholder={online ? 'Ask Tally anything…' : "Offline — I can still answer how-to questions"}
-              disabled={streaming}
-              aria-label="Message Tally"
-            />
+            {recState === 'recording' ? (
+              <div className="tally-rec" role="status" aria-live="polite">
+                <span className="tally-rec-dot" />
+                <span style={{ fontWeight: 600 }}>Listening…</span>
+                <span style={{ color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>
+                  {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
+                </span>
+                <span style={{ flex: 1 }} />
+                <button className="icon-btn" onClick={() => stopRecording(true)} title="Cancel" aria-label="Cancel recording"><X size={14} /></button>
+              </div>
+            ) : (
+              <input
+                ref={inputRef}
+                className="form-input"
+                style={{ flex: 1, fontSize: 13 }}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+                placeholder={recState === 'transcribing' ? 'Writing down what you said…' : online ? 'Ask Tally anything…' : "Offline — I can still answer how-to questions"}
+                disabled={streaming || recState === 'transcribing'}
+                aria-label="Message Tally"
+              />
+            )}
+            {voiceSupported && (
+              <button
+                className={`tally-mic ${recState === 'recording' ? 'on' : ''}`}
+                onClick={() => (recState === 'recording' ? stopRecording() : startRecording())}
+                disabled={streaming || recState === 'transcribing' || !online}
+                title={!online ? 'Voice needs an internet connection' : recState === 'recording' ? 'Stop and use what I said' : 'Speak your question'}
+                aria-label={recState === 'recording' ? 'Stop recording' : 'Speak your question'}
+              >
+                {recState === 'transcribing' ? <Loader2 size={15} className="spin" /> : recState === 'recording' ? <Square size={12} fill="currentColor" /> : <Mic size={16} />}
+              </button>
+            )}
             <button className="btn btn-primary btn-sm" onClick={() => send()} disabled={streaming || !input.trim()} style={{ padding: '0 13px' }} aria-label="Send">
               {streaming ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
             </button>

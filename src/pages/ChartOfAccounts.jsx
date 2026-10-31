@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore.jsx'
 import { useTheme } from '../lib/theme.jsx'
 import { useIsMobile } from '../lib/useIsMobile'
 import { fmt } from '../utils'
-import { Plus, X, Trash2, Pencil, BookOpen, Sparkles, Search } from 'lucide-react'
+import { Plus, X, Trash2, Pencil, Sparkles, Search } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts'

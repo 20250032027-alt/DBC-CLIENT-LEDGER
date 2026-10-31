@@ -43,6 +43,51 @@ const GROQ_BASE = Deno.env.get('GROQ_BASE_URL') || 'https://api.groq.com'
 
 const MAX_OUTPUT_TOKENS = 4096
 
+// ── Voice input ──
+// The chat's mic button records a short clip and sends it here; Groq's
+// hosted Whisper turns it into text (the same GROQ_API_KEY as the chat
+// backup — nothing extra to set up). The text goes back into the chat box
+// for the person to check before sending; nothing is stored.
+//   GROQ_STT_MODEL — defaults to whisper-large-v3-turbo (fast, multilingual)
+const GROQ_STT_MODEL = Deno.env.get('GROQ_STT_MODEL') || 'whisper-large-v3-turbo'
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024 // a 60-second clip is well under 1 MB; this is a safety cap
+// Spelling hints: Whisper tends to mishear app words and form numbers
+// without them. Language is left on automatic so Taglish works.
+const STT_PROMPT = 'Tally, DBC Ledger, voucher, vouchers, Chart of Accounts, BIR, VAT, 2551Q, 2550Q, 1601-EQ, 0619-E, EWT, Trial Balance, Account Listing, debit, credit, magkano, nagastos, kita.'
+
+async function transcribe(req: Request): Promise<Response> {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
+  if (!GROQ_API_KEY) return json({ error: 'VOICE_NOT_CONFIGURED: Voice input needs GROQ_API_KEY set as an Edge Function secret.' }, 503)
+  let audio: File | null = null
+  try {
+    const form = await req.formData()
+    const f = form.get('audio')
+    if (f instanceof File) audio = f
+  } catch { /* not valid form data */ }
+  if (!audio || audio.size === 0) return json({ error: 'No audio received.' }, 400)
+  if (audio.size > MAX_AUDIO_BYTES) return json({ error: 'That recording is too long. Try a shorter question.' }, 413)
+
+  const out = new FormData()
+  out.append('file', audio, audio.name || 'speech.webm')
+  out.append('model', GROQ_STT_MODEL)
+  out.append('prompt', STT_PROMPT)
+  out.append('response_format', 'json')
+  out.append('temperature', '0')
+  try {
+    const resp = await fetch(`${GROQ_BASE}/openai/v1/audio/transcriptions`, { method: 'POST', headers: { Authorization: `Bearer ${GROQ_API_KEY}` }, body: out })
+    if (!resp.ok) {
+      const detail = (await resp.text()).slice(0, 300)
+      console.error('help-chat transcribe failed', resp.status, detail)
+      return json({ error: resp.status === 429 ? 'QUOTA_EXCEEDED: Voice input has hit its free limit for now — please type instead, or try again later.' : 'Could not turn that recording into text.' }, 502)
+    }
+    const data = await resp.json()
+    return json({ text: String(data.text || '').trim() })
+  } catch (err) {
+    console.error('help-chat transcribe error', String(err))
+    return json({ error: 'Could not reach the voice service.' }, 502)
+  }
+}
+
 type ChatMessage = { role: 'user' | 'model'; text: string }
 type ChunkParser = (json: any) => { text?: string; truncated?: boolean }
 type Provider = { name: string; request: () => Promise<Response>; parse: ChunkParser }
@@ -212,6 +257,11 @@ const CORS_HEADERS = {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: CORS_HEADERS })
+  }
+
+  // Voice input arrives as an uploaded audio file, not chat text.
+  if ((req.headers.get('content-type') || '').includes('multipart/form-data')) {
+    return transcribe(req)
   }
 
   if (!GEMINI_API_KEY && !GROQ_API_KEY) {

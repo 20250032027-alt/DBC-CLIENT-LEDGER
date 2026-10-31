@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Flag, Loader2 } from 'lucide-react'
 import { captureScreenshot } from '../lib/screenshot'
-import { showToast } from '../lib/toast'
 import ReportModal from './ReportModal.jsx'
 
 const COOLDOWN_SECONDS = 8
@@ -12,7 +11,15 @@ export default function ReportButton({ page }) {
   const [capturing, setCapturing] = useState(false)
   const [cooldownUntil, setCooldownUntil] = useState(0)
 
-  const onCooldown = cooldownUntil > Date.now()
+  // A timer clears the cooldown when it ends. Checking the clock while
+  // drawing (the old way) meant nothing re-drew the button afterward, so it
+  // could stay greyed out long after the 8 seconds were up.
+  const onCooldown = cooldownUntil > 0
+  useEffect(() => {
+    if (!cooldownUntil) return
+    const t = setTimeout(() => setCooldownUntil(0), Math.max(0, cooldownUntil - Date.now()))
+    return () => clearTimeout(t)
+  }, [cooldownUntil])
 
   async function handleOpen() {
     if (onCooldown || capturing) return

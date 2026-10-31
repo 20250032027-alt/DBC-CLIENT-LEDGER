@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, fmtDate, nextBillNumber, normalizeTin } from '../utils'
-import { Plus, X, Trash2, Pencil, Search, Receipt, CheckCircle, Clock, AlertTriangle, Printer } from 'lucide-react'
+import { Plus, X, Trash2, Pencil, Search, CheckCircle, Clock, AlertTriangle, Printer } from 'lucide-react'
 import TallyEmpty from '../components/TallyEmpty.jsx'
 
 // ── Print Invoice ────────────────────────────────────────────────────────────

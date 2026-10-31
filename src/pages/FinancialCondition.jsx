@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { fmt, postedOnly, buildLedger, buildFinancialSections as buildSections, foldBillingIntoSections, excludeClosingEntries } from '../utils'
-import { BarChart3, X, Download } from 'lucide-react'
+import { X, Download } from 'lucide-react'
 import TallyEmpty from '../components/TallyEmpty.jsx'
 
 async function exportFinancialReportToExcel({

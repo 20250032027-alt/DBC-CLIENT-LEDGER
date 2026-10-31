@@ -311,7 +311,7 @@ function formatVoucherLine(v, cur) {
   return [header, ...entryLines].join('\n')
 }
 
-export function buildDataSummary({ vouchers, clients, bills, accounts, settings, activeMember, teamPages, page }) {
+export function buildDataSummary({ vouchers, clients, bills, accounts, settings, activeMember, teamPages, page, periodClosings = [] }) {
   // postedOnly() — NOT a plain `v.posted` check — for the same reason the
   // rest of the app uses it: a voucher with no `posted` field at all
   // (legacy data) defaults to counted-as-posted here too. Using a
@@ -356,7 +356,14 @@ export function buildDataSummary({ vouchers, clients, bills, accounts, settings,
     const ledger = buildLedger(posted)
     const sections = buildFinancialSections(ledger, accounts, posted)
     foldBillingIntoSections(sections, bills, posted)
-    const { currentAssets, fixedAssets, currentLiabilities, equity, revenue, expenses } = sections
+    // Revenue & expenses as ACTIVITY — closing entries left out, exactly as
+    // the Income Statement and Tally's own answers do. Otherwise, once a
+    // period is closed, its revenue and expenses read as ₱0 here.
+    const activity = excludeClosingEntries(posted, periodClosings)
+    const activitySections = buildFinancialSections(buildLedger(activity), accounts, activity)
+    foldBillingIntoSections(activitySections, bills, posted)
+    const { currentAssets, fixedAssets, currentLiabilities, equity } = sections
+    const { revenue, expenses } = activitySections
 
     const totalAssets = [...currentAssets, ...fixedAssets].reduce((s, r) => s + r.amount, 0)
     const totalLiabilities = currentLiabilities.reduce((s, r) => s + r.amount, 0)
@@ -378,6 +385,11 @@ export function buildDataSummary({ vouchers, clients, bills, accounts, settings,
     lines.push(`- Total Revenue: ${fmt(totalRevenue, cur)}`)
     lines.push(`- Total Expenses: ${fmt(totalExpenses, cur)}`)
     lines.push(`- Net Income: ${fmt(netIncome, cur)}`)
+    if (periodClosings.some(p => !p.reopened)) {
+      lines.push('- Note: Revenue, Expenses and Net Income above are ALL-TIME ACTIVITY (closing entries')
+      lines.push('  excluded). Income from CLOSED periods has also been moved into Equity (e.g. Retained')
+      lines.push('  Earnings) by the closing entries — never add Net Income and Equity together.')
+    }
 
     lines.push('')
     lines.push('ALL ACCOUNT BALANCES WITH ACTIVITY (posted vouchers; "Billing Revenue (Invoiced)" and')

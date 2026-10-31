@@ -199,7 +199,6 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     const debitAmount = parseFloat(get(idx.debitAmt))
     const vatAmount = parseFloat(get(idx.vat)) || 0
     const cashAmount = parseFloat(get(idx.cash))
-    const ref = String(get(idx.ref) || '').trim()
     const payee = String(get(idx.payee) || '').trim()
     const clientNameRaw = String(get(idx.client) || '').trim()
     if (clientNameRaw) clientNames.add(clientNameRaw)
@@ -985,7 +984,7 @@ function AccountingCalc({ onUseDebit, onUseCredit, taxRate = 12 }) {
     setExpr(e => e + '.')
   }
 
-  function useTape(val) {
+  function applyTapeValue(val) {
     const s = String(val)
     setDisplay(s); setExpr(s); setJustEvaled(true)
   }
@@ -1097,7 +1096,7 @@ function AccountingCalc({ onUseDebit, onUseCredit, taxRate = 12 }) {
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
             <div style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>History</div>
             {tape.map((t, i) => (
-              <div key={i} onClick={() => useTape(t.result)}
+              <div key={i} onClick={() => applyTapeValue(t.result)}
                 style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', cursor: 'pointer', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
                 <span style={{ color: 'var(--text-3)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{t.expr}</span>
                 <span style={{ color: 'var(--text-2)', fontFamily: 'var(--mono)', fontWeight: 600 }}>{t.result.toLocaleString('en-PH', { maximumFractionDigits: 2 })}</span>

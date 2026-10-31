@@ -13,7 +13,9 @@ export function checkBooks(data, now = new Date()) {
   const { vouchers = [], accounts = [], bills = [], periodClosings = [] } = data
   const today = isoDate(now.getFullYear(), now.getMonth(), now.getDate())
   const items = []
-  const warn = (text, goto) => items.push({ level: 'warn', text, goto })
+  // `short` is a one-line version for the chat's welcome screen, which has
+  // to fit without scrolling; `text` is the full version.
+  const warn = (text, goto, short) => items.push({ level: 'warn', text, goto, short: short || text })
   const ok = (text, goto) => items.push({ level: 'ok', text, goto })
 
   if (!accounts.length) {
@@ -26,16 +28,19 @@ export function checkBooks(data, now = new Date()) {
 
   // Posted vouchers that don't balance throw the Trial Balance off.
   const badPosted = posted.filter(v => !voucherTotals(v.entries || []).balanced)
-  if (badPosted.length) warn(`${badPosted.length} posted voucher${badPosted.length !== 1 ? 's don\'t' : ' doesn\'t'} balance (${list(badPosted)})`, 'vouchers')
+  if (badPosted.length) warn(`${badPosted.length} posted voucher${badPosted.length !== 1 ? 's don\'t' : ' doesn\'t'} balance (${list(badPosted)})`, 'vouchers',
+    `${badPosted.length} posted voucher${badPosted.length !== 1 ? 's don\'t' : ' doesn\'t'} balance`)
   else if (posted.length) ok('Trial Balance tallies', 'trial-balance')
 
   const badDrafts = drafts.filter(v => !voucherTotals(v.entries || []).balanced)
-  if (badDrafts.length) warn(`${badDrafts.length} draft${badDrafts.length !== 1 ? 's don\'t' : ' doesn\'t'} balance yet (${list(badDrafts)})`, 'vouchers')
+  if (badDrafts.length) warn(`${badDrafts.length} draft${badDrafts.length !== 1 ? 's don\'t' : ' doesn\'t'} balance yet (${list(badDrafts)})`, 'vouchers',
+    `${badDrafts.length} draft${badDrafts.length !== 1 ? 's don\'t' : ' doesn\'t'} balance yet`)
 
   if (drafts.length) {
     const oldest = drafts.map(v => v.date).filter(Boolean).sort()[0]
     const days = oldest ? Math.floor((Date.parse(today) - Date.parse(oldest)) / 86400000) : 0
-    warn(`${drafts.length} draft${drafts.length !== 1 ? 's' : ''} waiting to be posted` + (days >= 7 ? ` — the oldest is ${days} days old` : ''), 'vouchers')
+    warn(`${drafts.length} draft${drafts.length !== 1 ? 's' : ''} waiting to be posted` + (days >= 7 ? ` — the oldest is ${days} days old` : ''), 'vouchers',
+      `${drafts.length} draft${drafts.length !== 1 ? 's' : ''} waiting to be posted`)
   }
 
   // Entries on account names that aren't in the Chart of Accounts get
@@ -43,7 +48,8 @@ export function checkBooks(data, now = new Date()) {
   const known = new Set(accounts.map(a => (a.name || '').trim().toLowerCase()))
   const unknown = new Set()
   posted.forEach(v => (v.entries || []).forEach(e => { const n = (e.account || '').trim(); if (n && !known.has(n.toLowerCase())) unknown.add(n) }))
-  if (unknown.size) warn(`${unknown.size} account name${unknown.size !== 1 ? 's' : ''} in posted vouchers ${unknown.size !== 1 ? 'aren\'t' : 'isn\'t'} in your Chart of Accounts (${[...unknown].slice(0, 2).join(', ')}${unknown.size > 2 ? '…' : ''})`, 'accounts')
+  if (unknown.size) warn(`${unknown.size} account name${unknown.size !== 1 ? 's' : ''} in posted vouchers ${unknown.size !== 1 ? 'aren\'t' : 'isn\'t'} in your Chart of Accounts (${[...unknown].slice(0, 2).join(', ')}${unknown.size > 2 ? '…' : ''})`, 'accounts',
+    `${unknown.size} account${unknown.size !== 1 ? 's' : ''} missing from your Chart of Accounts`)
 
   const overdue = bills.filter(b => b.status !== 'paid' && (b.status === 'overdue' || (b.dueDate && b.dueDate < today)))
   if (overdue.length) warn(`${overdue.length} invoice${overdue.length !== 1 ? 's are' : ' is'} past due`, 'billing')

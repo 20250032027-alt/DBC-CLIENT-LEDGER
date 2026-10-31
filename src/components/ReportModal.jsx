@@ -61,7 +61,7 @@ export default function ReportModal({ page, selectedText, initialDescription, in
     try {
       const shot = await captureScreenshot()
       setScreenshot(shot)
-    } catch (err) {
+    } catch {
       showToast('Could not capture a new screenshot.', 'error')
     } finally {
       setRetaking(false)

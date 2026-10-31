@@ -5,7 +5,7 @@ import { getInstallState, promptInstall } from '../lib/installPrompt'
 import { clearLocalDb } from '../lib/db'
 import { stopSync } from '../lib/sync'
 import { Save, LogOut, Cloud, Smartphone, X, RotateCcw, Plus, Trash2, Shield, Sun, Moon, Palette, AlertTriangle, Check, Contrast, PanelLeft, PanelLeftClose, GraduationCap } from 'lucide-react'
-import { formatTin, normalizeTin, generateSalt, hashSecret, verifySecret } from '../utils'
+import { formatTin, normalizeTin, generateSalt, hashSecret } from '../utils'
 import { useTheme, ACCENT_PRESETS } from '../lib/theme.jsx'
 import { useTutorial } from '../lib/tutorial.jsx'
 import { isValidHex, checkAccentAccessibility, pickReadableTextColor } from '../lib/colorUtils'
@@ -219,7 +219,7 @@ export default function Settings({ userEmail }) {
     team: 'team members permissions password pin access',
     appearance: 'appearance theme dark light color accent contrast density sidebar collapse',
     tutorial: 'tutorial help walkthrough guide learn onboarding',
-    helpAssistant: 'help assistant ai chat chatbot data numbers',
+    helpAssistant: 'tally help assistant ai chat chatbot data numbers voice mic microphone',
     account: 'account sign out email',
     install: 'install app pwa home screen',
     data: 'data delete password reset export backup danger',
@@ -651,7 +651,7 @@ export default function Settings({ userEmail }) {
 
       {show('helpAssistant') && (
       <div className="card">
-        <div className="card-title" style={{ marginBottom: 4 }}>Help Assistant</div>
+        <div className="card-title" style={{ marginBottom: 4 }}>Tally (Help Assistant)</div>
         <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
           Controls whether the in-app chat assistant can see real figures from your books —
           account balances and individual voucher debit/credit entries — when answering
@@ -678,6 +678,11 @@ export default function Settings({ userEmail }) {
             </div>
           </span>
         </label>
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+          <strong style={{ color: 'var(--text-2)' }}>Voice input:</strong> the mic button in Tally's chat sends your
+          recording to Groq's speech-to-text service only to turn it into text. The recording isn't saved by
+          the app, and the text appears in the box for you to check before anything is sent.
+        </div>
       </div>
       )}
 
