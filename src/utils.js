@@ -52,6 +52,23 @@ export function normalizeTin(value) {
 // them. Older vouchers (and every normal one entered by hand) have no
 // `posted` field at all — treated as posted, so nothing already in the
 // books disappears from reports because of this.
+// Account names are matched ignoring capitalization and surrounding spaces:
+// "Cash", "cash", "CASH" and " Cash " are all the same account. This is the
+// rule the rest of the app already uses; these helpers just give it one name.
+export const accountKey = name => (name || '').trim().toLowerCase()
+export function findAccount(accounts = [], name) {
+  const k = accountKey(name)
+  return k ? accounts.find(a => accountKey(a.name) === k) : undefined
+}
+// Voucher lines with each account spelled exactly as in the Chart of
+// Accounts. Names that aren't in the chart are left exactly as typed.
+export function canonicalEntries(entries, accounts) {
+  return (entries || []).map(e => {
+    const a = findAccount(accounts, e.account)
+    return a && e.account !== a.name ? { ...e, account: a.name } : e
+  })
+}
+
 export function postedOnly(vouchers = []) {
   return vouchers.filter(v => v.posted !== false)
 }

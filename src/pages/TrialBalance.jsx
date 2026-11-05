@@ -1,20 +1,25 @@
 import { useState, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, postedOnly } from '../utils'
+import { fmt, fmtDate, postedOnly, accountKey, findAccount } from '../utils'
 import { Scale, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
-function buildTrialBalance(vouchers) {
+// Grouped ignoring capitalization, so "Cash", "cash" and "CASH" are one
+// row — shown with the Chart of Accounts spelling (or, for a name that isn't
+// in the chart, the first spelling used). Grouping by the exact text used to
+// list each spelling as a separate account.
+function buildTrialBalance(vouchers, chart = []) {
   const accounts = {}
   vouchers.forEach(v => {
     const displayDate = v.date || fmtDate(v.createdAt)
     ;(v.entries || []).forEach(e => {
-      if (!e.account) return
-      if (!accounts[e.account]) accounts[e.account] = { debit: 0, credit: 0, entries: [] }
+      if (!e.account || !e.account.trim()) return
+      const key = accountKey(e.account)
+      if (!accounts[key]) accounts[key] = { name: findAccount(chart, e.account)?.name || e.account.trim(), debit: 0, credit: 0, entries: [] }
       const debit = parseFloat(e.debit || 0)
       const credit = parseFloat(e.credit || 0)
-      accounts[e.account].debit += debit
-      accounts[e.account].credit += credit
-      accounts[e.account].entries.push({
+      accounts[key].debit += debit
+      accounts[key].credit += credit
+      accounts[key].entries.push({
         date: displayDate,
         rawDate: v.date || '',
         voucherNumber: v.number,
@@ -23,7 +28,7 @@ function buildTrialBalance(vouchers) {
       })
     })
   })
-  return Object.entries(accounts).map(([account, { debit, credit, entries }]) => ({
+  return Object.values(accounts).map(({ name: account, debit, credit, entries }) => ({
     account, debit, credit,
     balance: debit - credit,
     entries: entries.sort((a, b) => a.rawDate < b.rawDate ? -1 : a.rawDate > b.rawDate ? 1 : 0),
@@ -60,7 +65,7 @@ function categorize(account, typeMap) {
 export default function TrialBalance() {
   const { vouchers, accounts, settings } = useStore()
   const cur = settings.currency
-  const rows = buildTrialBalance(postedOnly(vouchers))
+  const rows = buildTrialBalance(postedOnly(vouchers), accounts)
   const [expanded, setExpanded] = useState(new Set())
   function toggle(account) {
     setExpanded(prev => {

@@ -3,7 +3,7 @@ import { db, liveRowsFor } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { queueWrite, initSync, stopSync, onSyncStatusChange, pendingCount, syncNow } from '../lib/sync'
 import { DEFAULT_ACCOUNTS } from './defaultAccounts'
-import { nextVoucherNumber, nextBillNumber, nextPosSaleNumber, generateSalt, hashSecret } from '../utils'
+import { nextVoucherNumber, nextBillNumber, nextPosSaleNumber, generateSalt, hashSecret, findAccount, canonicalEntries } from '../utils'
 
 const defaultSettings = {
   company: 'My Company',
@@ -224,6 +224,9 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   async function insertVoucherRecord(voucher, opts) {
     const id = crypto.randomUUID()
     const rec = { id, userId, createdAt: new Date().toISOString(), number: null, ...voucher }
+    // "cash" / "CASH" typed on a line is saved as the Chart of Accounts
+    // spelling ("Cash"), so one account never splits into several.
+    if (rec.entries) rec.entries = canonicalEntries(rec.entries, accounts)
     if (blockedByClosing(voucherPeriodDate(rec))) return null
     await queueWrite('vouchers', 'insert', rec, opts)
     return id
@@ -239,6 +242,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     // Both dates checked — can't edit a voucher sitting in a closed
     // period, and can't move an open voucher into one either.
     if (blockedByClosing(voucherPeriodDate(existing)) || blockedByClosing(voucherPeriodDate({ ...existing, ...patch }))) return
+    if (patch.entries) patch = { ...patch, entries: canonicalEntries(patch.entries, accounts) }
     await queueWrite('vouchers', 'update', { ...existing, ...patch, id })
     await refreshFromLocal()
   }
@@ -675,17 +679,22 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   function computePeriodNetActivity(periodStart, closedThrough) {
     const balances = {}
     for (const v of vouchers) {
-      if (!v.posted) continue
+      // Same rule as every report (postedOnly): only explicit drafts are
+      // skipped. Older vouchers with no posted flag count as posted.
+      if (v.posted === false) continue
       const vDate = voucherPeriodDate(v)
       if (!vDate || vDate > closedThrough) continue
       if (periodStart && vDate < periodStart) continue
       for (const e of (v.entries || [])) {
-        const acct = accounts.find(a => a.name === e.account)
+        // Matched ignoring capitalization ("sales revenue" = "Sales Revenue"),
+        // and totaled under the chart's spelling — an exact match here used
+        // to leave differently-typed lines OUT of the closing entry.
+        const acct = findAccount(accounts, e.account)
         if (!acct || (acct.type !== 'revenue' && acct.type !== 'expense')) continue
         const debit = Number(e.debit) || 0
         const credit = Number(e.credit) || 0
         const delta = acct.type === 'revenue' ? (credit - debit) : (debit - credit)
-        balances[e.account] = (balances[e.account] || 0) + delta
+        balances[acct.name] = (balances[acct.name] || 0) + delta
       }
     }
     return balances
@@ -727,7 +736,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     for (const [accountName, rawBalance] of Object.entries(balances)) {
       const balance = cents(rawBalance)
       if (Math.abs(balance) < 0.01) continue
-      const acct = accounts.find(a => a.name === accountName)
+      const acct = findAccount(accounts, accountName)
       if (acct.type === 'revenue') {
         entries.push({ account: accountName, description: 'Closing entry', debit: String(balance), credit: '' })
         netIncome += balance

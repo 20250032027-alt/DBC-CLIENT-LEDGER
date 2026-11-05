@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt } from '../utils'
+import { fmt, findAccount } from '../utils'
 import { showToast } from '../lib/toast'
 import { Lock, CalendarCheck, TrendingUp, TrendingDown, ShieldCheck, RotateCcw, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 
@@ -32,7 +32,7 @@ export default function ClosingBooks() {
     let netIncome = 0
     for (const [name, balance] of Object.entries(balances)) {
       if (Math.abs(balance) < 0.01) continue
-      const acct = accounts.find(a => a.name === name)
+      const acct = findAccount(accounts, name)
       if (acct?.type === 'revenue') { revenue.push({ name, balance }); netIncome += balance }
       else { expense.push({ name, balance }); netIncome -= balance }
     }
