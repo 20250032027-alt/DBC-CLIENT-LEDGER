@@ -69,6 +69,148 @@ export function canonicalEntries(entries, accounts) {
   })
 }
 
+// ── Subsidiary ledgers: a balance per customer (Accounts Receivable) and
+// per supplier (Accounts Payable). Customers and suppliers both come from
+// the Clients list. The control accounts are recognized by type + name, so
+// no setting is needed: an ASSET like "Accounts Receivable" / "Trade
+// Receivables", or a LIABILITY like "Accounts Payable" / "Trade Payables".
+// Tax accounts ("VAT Payable", "Withholding Tax Receivable"…) are owed to or
+// by the BIR, not a customer or supplier, so they never match.
+const RECEIVABLE_RE = /\b(accounts|trade)\s+receivables?\b|\breceivables?\s*[-–]\s*trade\b/i
+const PAYABLE_RE = /\b(accounts|trade)\s+payables?\b|\bpayables?\s*[-–]\s*trade\b/i
+export function subsidiaryKind(account) {
+  if (!account) return null
+  if (account.type === 'asset' && RECEIVABLE_RE.test(account.name || '')) return 'receivable'
+  if (account.type === 'liability' && PAYABLE_RE.test(account.name || '')) return 'payable'
+  return null
+}
+export const subsidiaryKindOf = (accounts, name) => subsidiaryKind(findAccount(accounts, name))
+export function findClientByName(clients = [], name) {
+  const k = accountKey(name)
+  return k ? clients.find(c => accountKey(c.name) === k) : undefined
+}
+
+// Which customer/supplier a receivable/payable line belongs to, most
+// specific first: the line's own pick → the voucher's Client → the invoice
+// it was posted for (by invoice number) → a client named at the end of the
+// memo ("Invoice — ABC Trading", how Billing writes them) → the payee.
+// Only EXACT name matches count (ignoring capitalization) — no guessing.
+export function lineClientId(v, e, ctx) {
+  if (e.clientId) return e.clientId
+  if (v.clientId) return v.clientId
+  const bill = v.reference && ctx.billsByNumber.get(v.reference)
+  if (bill?.clientId) return bill.clientId
+  const m = (v.memo || '').match(/\u2014\s*([^\u2014]+)$/) // the "—" Billing puts before the client's name
+  const byMemo = m && findClientByName(ctx.clients, m[1])
+  if (byMemo) return byMemo.id
+  const byPayee = v.payee && findClientByName(ctx.clients, v.payee)
+  return byPayee ? byPayee.id : null
+}
+
+// kind: 'receivable' | 'payable'. Posted vouchers only, like every report.
+// Balances are what the customer owes you (receivable) or what you owe the
+// supplier (payable). Lines that can't be matched to a client are grouped
+// as "unassigned", so the parts always add up to the control account.
+export function buildSubsidiaryLedger({ vouchers = [], accounts = [], clients = [], bills = [], kind, asOf = null }) {
+  const controls = accounts.filter(a => subsidiaryKind(a) === kind)
+  const controlKeys = new Set(controls.map(a => accountKey(a.name)))
+  const ctx = { clients, billsByNumber: new Map(bills.filter(b => b.number).map(b => [b.number, b])) }
+  const known = new Set(clients.map(c => c.id))
+  const sign = kind === 'receivable' ? 1 : -1
+  const cents = x => Math.round(x * 100) / 100
+  const groups = new Map()
+  const posted = postedOnly(vouchers)
+    .filter(v => !asOf || !v.date || v.date <= asOf)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.number || '').localeCompare(String(b.number || '')))
+  for (const v of posted) {
+    ;(v.entries || []).forEach((e, lineIndex) => {
+      if (!controlKeys.has(accountKey(e.account))) return
+      const debit = parseFloat(e.debit || 0) || 0
+      const credit = parseFloat(e.credit || 0) || 0
+      if (!debit && !credit) return
+      const found = lineClientId(v, e, ctx)
+      const key = found && known.has(found) ? found : null // a deleted client's lines show as unassigned
+      if (!groups.has(key)) groups.set(key, { clientId: key, client: clients.find(c => c.id === key) || null, entries: [], balance: 0, debit: 0, credit: 0 })
+      const g = groups.get(key)
+      g.debit += debit; g.credit += credit
+      g.balance = cents(g.balance + sign * (debit - credit))
+      g.entries.push({ voucherId: v.id, lineIndex, date: v.date || '', number: v.number || '', description: e.description || v.memo || '', account: e.account, debit, credit, running: g.balance, explicit: !!e.clientId, dueDate: e.dueDate || null })
+    })
+  }
+  const rows = [...groups.values()].filter(g => g.clientId).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance) || (a.client?.name || '').localeCompare(b.client?.name || ''))
+  const unassigned = groups.get(null) || null
+  const total = cents([...groups.values()].reduce((t, g) => t + g.balance, 0))
+  return { controls: controls.map(a => a.name), rows, unassigned, total, assignedTotal: cents(rows.reduce((t, g) => t + g.balance, 0)) }
+}
+
+// ── Aging: each balance split by how long it has been outstanding ──
+// Payments are applied to the oldest charges first (first in, first out),
+// the standard method when payments aren't tied to specific invoices. What
+// remains open is aged from its DUE date where known (a Billing invoice's
+// due date, carried on its line), otherwise from the entry date — i.e. a
+// manual entry is treated as due when it was recorded. A balance paid past
+// zero (overpaid / advance) shows as a negative amount in "Current".
+// Every row's buckets add up exactly to its balance.
+export const AGING_BUCKETS = [
+  { key: 'current', label: 'Current' },
+  { key: 'd1_30', label: '1–30 days' },
+  { key: 'd31_60', label: '31–60 days' },
+  { key: 'd61_90', label: '61–90 days' },
+  { key: 'd90', label: 'Over 90 days' },
+]
+function bucketFor(days) {
+  if (days <= 0) return 'current'
+  if (days <= 30) return 'd1_30'
+  if (days <= 60) return 'd31_60'
+  if (days <= 90) return 'd61_90'
+  return 'd90'
+}
+const dayNumber = iso => Math.floor(Date.parse(iso + 'T00:00:00Z') / 86400000)
+
+// ledger = buildSubsidiaryLedger(...) result. bills are used to find the
+// due date of older invoice entries: same customer, same date, same amount
+// — an exact match only; otherwise the entry date is used.
+export function buildAging(ledger, { kind, asOf, bills = [] }) {
+  const sign = kind === 'receivable' ? 1 : -1
+  const cents = x => Math.round(x * 100) / 100
+  const asOfDay = dayNumber(asOf)
+  const dueFor = (g, e, amount) => {
+    if (e.dueDate) return e.dueDate
+    if (kind !== 'receivable' || !g.clientId) return null
+    const b = bills.find(b => b.clientId === g.clientId && b.date === e.date && b.dueDate && Math.abs(parseFloat(b.total || 0) - amount) < 0.005)
+    return b ? b.dueDate : null
+  }
+  const ageGroup = g => {
+    const charges = [] // still-open amounts, oldest first
+    let credit = 0
+    for (const e of g.entries) {
+      const amt = cents(sign * ((e.debit || 0) - (e.credit || 0)))
+      if (amt > 0) charges.push({ amount: amt, due: dueFor(g, e, amt) || e.date || asOf, date: e.date })
+      else if (amt < 0) credit += -amt
+    }
+    charges.sort((a, b) => a.due.localeCompare(b.due) || (a.date || '').localeCompare(b.date || ''))
+    for (const c of charges) { // apply payments to the oldest first
+      if (credit <= 0) break
+      const used = Math.min(c.amount, credit)
+      c.amount = cents(c.amount - used); credit = cents(credit - used)
+    }
+    const buckets = Object.fromEntries(AGING_BUCKETS.map(b => [b.key, 0]))
+    let oldestDays = 0
+    for (const c of charges) if (c.amount > 0) {
+      const days = asOfDay - dayNumber(c.due)
+      buckets[bucketFor(days)] = cents(buckets[bucketFor(days)] + c.amount)
+      if (days > oldestDays) oldestDays = days
+    }
+    if (credit > 0) buckets.current = cents(buckets.current - credit)
+    const overdue = cents(buckets.d1_30 + buckets.d31_60 + buckets.d61_90 + buckets.d90)
+    return { clientId: g.clientId, client: g.client, balance: g.balance, buckets, overdue, oldestDays }
+  }
+  const rows = ledger.rows.map(ageGroup)
+  const unassigned = ledger.unassigned ? ageGroup(ledger.unassigned) : null
+  const totals = Object.fromEntries(AGING_BUCKETS.map(b => [b.key, cents([...rows, ...(unassigned ? [unassigned] : [])].reduce((t, r) => t + r.buckets[b.key], 0))]))
+  return { rows, unassigned, totals, total: ledger.total }
+}
+
 export function postedOnly(vouchers = []) {
   return vouchers.filter(v => v.posted !== false)
 }

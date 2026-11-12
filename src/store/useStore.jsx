@@ -321,8 +321,11 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       date: bill.date || new Date().toISOString().slice(0, 10),
       memo: `Invoice (pending #) — ${bill.clientName || ''}`,
       reference: null,
+      // The customer is recorded on the receivable line itself, so the
+      // Subsidiary Ledger knows exactly who owes this amount.
+      clientId: bill.clientId || '',
       entries: [
-        { account: arAccount, description: `Receivable from ${bill.clientName || ''}`, debit: bill.total, credit: 0 },
+        { account: arAccount, description: `Receivable from ${bill.clientName || ''}`, debit: bill.total, credit: 0, clientId: bill.clientId || '', ...(bill.dueDate ? { dueDate: bill.dueDate } : {}) },
         { account: revAccount, description: `Revenue for invoice`, debit: 0, credit: bill.total },
       ],
     }, { silent: true })
@@ -347,9 +350,10 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
         date: patch.paidDate || new Date().toISOString().slice(0, 10),
         memo: `Collection for ${updated.number || 'invoice'} — ${updated.clientName || ''}`,
         reference: updated.number || null,
+        clientId: updated.clientId || '',
         entries: [
           { account: cashAccount, description: `Cash received from ${updated.clientName || ''}`, debit: updated.total, credit: 0 },
-          { account: arAccount, description: `Clear receivable`, debit: 0, credit: updated.total },
+          { account: arAccount, description: `Clear receivable`, debit: 0, credit: updated.total, clientId: updated.clientId || '' },
         ],
       }, { silent: true })
     }

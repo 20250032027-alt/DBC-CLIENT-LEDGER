@@ -12,6 +12,7 @@
 // and the question goes to the AI instead — a wrong confident number is
 // worse than a slightly slower answer.
 import {
+  buildSubsidiaryLedger, buildAging,
   fmt, isoDate, postedOnly, excludeClosingEntries, buildLedger, buildFinancialSections, foldBillingIntoSections, voucherTotals,
 } from '../utils'
 
@@ -24,7 +25,7 @@ const MONTH_LABEL = i => ['January', 'February', 'March', 'April', 'May', 'June'
 
 const has = (q, re) => re.test(q)
 const RE = {
-  numeric: /how much|how many|magkano|\bilan\b|total|balance|summar|overview|recap|how did we do|how are we doing|kumusta ang|profit|net income|net loss|\bkita\b|kinita|tubo|gastos|nagastos|spent|spend|earn|biggest|largest|pinakamalaki|unpaid|overdue|outstanding|\bcash\b|\bpera\b|draft|unposted/,
+  numeric: /\bowe|\baging\b|who (is|are) (over ?due|past due|late)|late (magbayad|payers)|\butang\b|receivable|payable|debtor|creditor|how much|how many|magkano|\bilan\b|total|balance|summar|overview|recap|how did we do|how are we doing|kumusta ang|profit|net income|net loss|\bkita\b|kinita|tubo|gastos|nagastos|spent|spend|earn|biggest|largest|pinakamalaki|unpaid|overdue|outstanding|\bcash\b|\bpera\b|draft|unposted/,
   summary: /summar|overview|recap|how did we do|how are we doing|kumusta ang (negosyo|benta|buwan)|\bbuod\b/,
   profit: /profit|net income|net loss|\btubo\b|kinita|\bkita\b/,
   biggest: /biggest|largest|\btop\b|pinakamalaki/,
@@ -33,6 +34,10 @@ const RE = {
   cash: /\bcash\b|\bbank\b|\bpera\b/,
   drafts: /draft|unposted|not (yet )?posted|hindi pa (naka-?)?post/,
   invoices: /unpaid|outstanding|overdue|receivable|collect|\butang\b|singil|hindi pa bayad/,
+  // Subsidiary ledger: balances per customer / supplier
+  owedToUs: /who owes|owes? us|owe you|owes you|receivables?\b|debtors?|sino (ang )?may utang|may utang sa (amin|atin)|utang (ni|ng|nila)\b/,
+  overdueWho: /who (is|are|'s) (over ?due|past due|late)|(overdue|past due|late) (customers|clients|accounts|balances|payers)|\baging\b|slow pay|sino (ang )?(late|overdue|hindi pa nagbabayad|matagal)/,
+  weOwe: /who do (we|i) owe|(we|i) owe|do (we|i) owe|payables?\b|creditors?|suppliers? .*owe|utang (namin|natin|ko)|babayaran (namin|natin)/,
   skip: /\bwhy\b|\bbakit\b|\b(gj|sv|rj|dj|cv|jv)\s?\d{4}-\d+/,
   // "what is a cash voucher?", "how do I record expenses?" — explanations,
   // not requests for a figure. Only "how much / how many" overrides this.
@@ -157,6 +162,12 @@ export function answerNumbers(question, data, now = new Date()) {
 
   if (!money) return moneyOff
 
+  // Balances per customer / supplier, from the Subsidiary Ledger. Checked
+  // before the invoice answer below because it's more complete: it covers
+  // every Accounts Receivable / Payable entry, not just Billing invoices.
+  const subAnswer = answerSubsidiary(q, data, cur, result, now)
+  if (subAnswer) return subAnswer
+
   if (has(q, RE.invoices)) {
     const today = isoDate(now.getFullYear(), now.getMonth(), now.getDate())
     const unpaid = (data.bills || []).filter(b => b.status !== 'paid')
@@ -240,4 +251,66 @@ export function answerNumbers(question, data, now = new Date()) {
     + (pa ? compare(total, prevTotal, p.prev.label, cur) : '')
     + (isSpend && top.length ? `\n\nBiggest: ${topText}.` : '') + draftNote(data, p)
     + '\n\nThe breakdown is in **Financial Reports**.', 'financial')
+}
+
+// ── "Who owes us?", "How much does ABC owe?", "Who do we owe?" ──
+function answerSubsidiary(q, data, cur, result, now = new Date()) {
+  const clients = data.clients || []
+  // A client named in the question (longest name first, so "ABC Trading
+  // Corp" wins over "ABC").
+  const named = [...clients].filter(c => (c.name || '').trim().length >= 3)
+    .sort((a, b) => b.name.length - a.name.length)
+    .find(c => q.includes(c.name.trim().toLowerCase()))
+  // "Who is overdue?" — customers with past-due amounts, from the aging.
+  if (has(q, RE.overdueWho) && !has(q, /invoices?\b/)) {
+    const today = isoDate(now.getFullYear(), now.getMonth(), now.getDate())
+    const L = buildSubsidiaryLedger({ vouchers: data.vouchers, accounts: data.accounts, clients, bills: data.bills || [], kind: 'receivable' })
+    if (!L.controls.length) return null
+    const late = buildAging(L, { kind: 'receivable', asOf: today, bills: data.bills || [] }).rows
+      .filter(r => r.overdue > 0.004).sort((a, b) => b.overdue - a.overdue)
+    if (!late.length) return result('No customer is past due right now.\n\nSee the full aging in **Subsidiary Ledger**.', 'subsidiary-ledger')
+    const total = late.reduce((t, r) => t + r.overdue, 0)
+    const list = late.slice(0, 5).map((r, i) => `${i + 1}. ${r.client.name} — **${fmt(r.overdue, cur)}** past due (oldest: ${r.oldestDays} day${r.oldestDays !== 1 ? 's' : ''})`).join('\n')
+    return result(`**${late.length} customer${late.length !== 1 ? 's are' : ' is'}** past due, **${fmt(total, cur)}** in total:\n\n${list}`
+      + (late.length > 5 ? `\n\n…and ${late.length - 5} more.` : '') + '\n\nSee the full aging in **Subsidiary Ledger** (switch to Aging).', 'subsidiary-ledger')
+  }
+
+  const wantsOwedToUs = has(q, RE.owedToUs)
+  const wantsWeOwe = has(q, RE.weOwe)
+  if (!named && !wantsOwedToUs && !wantsWeOwe) return null
+  if (has(q, /unpaid invoice|overdue invoice|invoices?/) && !named) return null // invoice questions keep their own answer
+
+  const build = kind => buildSubsidiaryLedger({ vouchers: data.vouchers, accounts: data.accounts, clients, bills: data.bills || [], kind })
+  const ar = build('receivable'), ap = build('payable')
+  const link = '\n\nSee every entry in **Subsidiary Ledger**.'
+
+  if (named) {
+    if (!has(q, /\bowe|utang|balance|bayad|magkano|how much|receivable|payable/)) return null
+    const r = ar.rows.find(g => g.clientId === named.id)?.balance || 0
+    const p = ap.rows.find(g => g.clientId === named.id)?.balance || 0
+    const parts = []
+    if (r > 0.004) parts.push(`**${named.name}** owes you **${fmt(r, cur)}**.`)
+    if (r < -0.004) parts.push(`**${named.name}** has overpaid you by ${fmt(-r, cur)}.`)
+    if (p > 0.004) parts.push(`You owe **${named.name}** **${fmt(p, cur)}**.`)
+    if (p < -0.004) parts.push(`You've paid **${named.name}** ${fmt(-p, cur)} in advance.`)
+    if (!parts.length) parts.push(`**${named.name}** is all settled — nothing owed either way.`)
+    return result(parts.join(' ') + ' (From posted vouchers.)' + link, 'subsidiary-ledger')
+  }
+
+  const kind = wantsWeOwe && !wantsOwedToUs ? 'payable' : 'receivable'
+  const L = kind === 'receivable' ? ar : ap
+  if (!L.controls.length) return null // no Accounts Receivable/Payable account — let other answers handle it
+  const open = L.rows.filter(g => g.balance > 0.004)
+  const who = kind === 'receivable' ? 'customer' : 'supplier'
+  const un = L.unassigned && Math.abs(L.unassigned.balance) > 0.004
+    ? `\n\nPlus ${fmt(L.unassigned.balance, cur)} that isn't assigned to a ${who} yet.` : ''
+  if (!open.length) {
+    return result((kind === 'receivable' ? 'No customer owes you anything right now.' : "You don't owe any supplier right now.") + un + link, 'subsidiary-ledger')
+  }
+  const total = open.reduce((t, g) => t + g.balance, 0)
+  const top = open.slice(0, 5).map((g, i) => `${i + 1}. ${g.client.name} — **${fmt(g.balance, cur)}**`).join('\n')
+  const head = kind === 'receivable'
+    ? `**${open.length} customer${open.length !== 1 ? 's' : ''}** owe${open.length === 1 ? 's' : ''} you a total of **${fmt(total, cur)}**:`
+    : `You owe **${open.length} supplier${open.length !== 1 ? 's' : ''}** a total of **${fmt(total, cur)}**:`
+  return result(`${head}\n\n${top}` + (open.length > 5 ? `\n\n…and ${open.length - 5} more.` : '') + un + link, 'subsidiary-ledger')
 }

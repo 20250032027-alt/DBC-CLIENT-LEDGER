@@ -19,6 +19,7 @@ const TEAM_PAGES = [
   { id: 'accounts', label: 'Chart of Accounts' },
   { id: 'trial-balance', label: 'Trial Balance' },
   { id: 'account-listing', label: 'Account Listing' },
+  { id: 'subsidiary-ledger', label: 'Subsidiary Ledger' },
   { id: 'cash-flow', label: 'Cash Flow' },
   { id: 'closing-books', label: 'Closing Books' },
   { id: 'financial', label: 'Financial Reports' },

@@ -85,6 +85,37 @@ the one concept almost every question eventually comes back to.
   debits and credits don't match can't be posted until it's fixed
 - Each line's description is the **payee** only
 
+# Subsidiary Ledger
+
+- A page in the sidebar (after Account Listing) that breaks the control
+  accounts down by person: **Customers** for Accounts Receivable (what each
+  one owes the business) and **Suppliers** for Accounts Payable (what the
+  business owes each one). Customers and suppliers both come from **Clients**.
+- The control accounts are recognized automatically: an Asset named like
+  "Accounts Receivable" or "Trade Receivables", and a Liability named like
+  "Accounts Payable" or "Trade Payables". Tax accounts (VAT Payable,
+  Withholding Tax Payable/Receivable) are never included.
+- On a voucher, an Accounts Receivable/Payable line shows a small customer /
+  supplier picker under the account; if left alone it uses the voucher's
+  Client. Billing invoices and payments fill it in automatically, and Bulk
+  Import uses each row's Client (or Payee) column.
+- Older entries are matched by the voucher's Client, the invoice number,
+  or a client named in the memo; anything that can't be matched shows as
+  **Unassigned** with a picker to fix it — never guessed.
+- A line at the top checks that customers (or suppliers) plus unassigned
+  equal the control account's balance in the general ledger. Posted
+  vouchers only; "As of" date, search, "Hide settled", Export to Excel.
+- **Aging** (a switch on the same page): each customer's or supplier's
+  balance split into Current, 1–30, 31–60, 61–90 and Over 90 days, as of
+  the chosen date. Billing invoices age from their due date (new invoices
+  carry it on the entry; older ones are matched to their invoice by
+  customer, date and amount — exact matches only); other entries age from
+  the date recorded. Payments are applied to the oldest charges first. An
+  overpaid balance shows as a negative amount in Current. Rows add up to
+  each balance; totals add up to the control account. Exports to Excel.
+- Tally answers "Who owes us money?", "How much does <client> owe us?",
+  "Who do we owe?" and "Who is overdue?" from this ledger.
+
 # Chart of Accounts
 
 The list of accounts (Asset, Liability, Equity, Revenue, or Expense type)

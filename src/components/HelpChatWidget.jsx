@@ -103,6 +103,7 @@ const TEAM_PAGES = [
   { id: 'accounts', label: 'Chart of Accounts' },
   { id: 'trial-balance', label: 'Trial Balance' },
   { id: 'account-listing', label: 'Account Listing' },
+  { id: 'subsidiary-ledger', label: 'Subsidiary Ledger' },
   { id: 'cash-flow', label: 'Cash Flow' },
   { id: 'closing-books', label: 'Closing Books' },
   { id: 'financial', label: 'Financial Reports' },
@@ -130,6 +131,7 @@ const SUGGESTIONS = {
   accounts: ['How do I add a new account?', 'Biggest expenses this month?'],
   financial: ['How did we do this month?', "What's our profit this year?", 'Biggest expenses this month?'],
   'account-listing': ['Biggest expenses this month?', 'How do I export to Excel?'],
+  'subsidiary-ledger': ['Who owes us money?', 'Who do we owe?'],
   billing: ['Any unpaid invoices?', 'How much cash do we have?'],
   'closing-books': ['How do I close the books?', 'How do I reopen a closed period?'],
   'tax-return': ['When is the next tax deadline?'],
@@ -138,7 +140,7 @@ const SUGGESTIONS = {
   settings: ['How do I add a team member?', 'How do I turn on dark mode?', 'Where is the tutorial?'],
 }
 const DEFAULT_SUGGESTIONS = ['How did we do this month?', 'How do I record a transaction?', 'Paano mag post ng voucher?']
-const MONEY_CHIPS = new Set(['How did we do this month?', 'How much cash do we have?', 'Biggest expenses this month?', "What's our profit this year?", 'Any unpaid invoices?'])
+const MONEY_CHIPS = new Set(['Who owes us money?', 'Who do we owe?', 'How did we do this month?', 'How much cash do we have?', 'Biggest expenses this month?', "What's our profit this year?", 'Any unpaid invoices?'])
 const BOOKS_CHECK = /check (my |our |the )?books|health ?check|anything wrong|any problems|may mali|i-?check/i
 
 // Pages mentioned in an answer (as **Page Name**) become "Go to" buttons,
@@ -163,7 +165,7 @@ function loadSaved(key) {
 // — this widget doesn't need its own copy of that logic.
 export default function HelpChatWidget({ page, activeMember, onNavigate }) {
   const { userId, vouchers, clients, bills, accounts, settings, periodClosings } = useStore()
-  const books = { vouchers, accounts, bills, settings, periodClosings }
+  const books = { vouchers, accounts, bills, settings, periodClosings, clients }
   // The quick check of the books, recomputed whenever the books change.
   const health = useMemo(() => checkBooks({ vouchers, accounts, bills, periodClosings }), [vouchers, accounts, bills, periodClosings])
   const moneyOn = settings?.helpAssistantDataEnabled !== false

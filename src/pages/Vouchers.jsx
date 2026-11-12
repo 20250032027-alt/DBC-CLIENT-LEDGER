@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret } from '../utils'
+import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret, subsidiaryKindOf, findClientByName } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink, Lock } from 'lucide-react'
 import { showToast } from '../lib/toast'
 import { compressAttachment } from '../lib/compressAttachment'
@@ -236,10 +236,14 @@ function parseVoucherImportRows(aoa, journalType, taxAccountName, accounts, clie
     const fullDesc = payee || `Row ${r + 1}`
     const issuesText = issues.join('; ')
 
+    // The row's Client column (or, failing that, its Payee) says which
+    // customer/supplier a receivable/payable line on this row belongs to.
+    const rowClient = findClientByName(clients, clientNameRaw) || findClientByName(clients, payee)
     const line = (account, debit, credit) => ({
       account, description: fullDesc,
       debit: debit ? String(debit) : '', credit: credit ? String(credit) : '',
       flagged, issuesText, id: crypto.randomUUID(),
+      ...(rowClient && subsidiaryKindOf(accounts, account) ? { clientId: rowClient.id } : {}),
     })
 
     // A blank account title means that side's entry is left out of the
@@ -833,7 +837,12 @@ function PayeeAutocomplete({ value, onChange, onSelectPayee, payeeIndex, placeho
   )
 }
 
-function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, index, onFocus }) {
+function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, index, onFocus, clients = [], voucherClientId = '' }) {
+  // On an Accounts Receivable / Payable line, pick which customer or
+  // supplier it's for — that's what the Subsidiary Ledger is built from.
+  // Left alone, the line uses the voucher's Client.
+  const subKind = subsidiaryKindOf(accounts, entry.account)
+  const voucherClient = clients.find(c => c.id === voucherClientId)
   // Tab on last credit field → add new row
   function handleCreditKeyDown(e) {
     if (e.key === 'Tab' && !e.shiftKey && isLast) {
@@ -853,6 +862,22 @@ function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, ind
           placeholder="Account name"
           style={{ fontSize: 12, padding: '5px 8px' }}
         />
+        {subKind && (
+          <select
+            className="form-select"
+            style={{ fontSize: 11, padding: '2px 6px', marginTop: 4, height: 'auto', color: entry.clientId || voucherClient ? 'var(--text-1)' : 'var(--amber)' }}
+            value={entry.clientId || ''}
+            onChange={e => onChange({ ...entry, clientId: e.target.value })}
+            aria-label={subKind === 'receivable' ? 'Customer for this line' : 'Supplier for this line'}
+          >
+            <option value="">
+              {voucherClient
+                ? `${subKind === 'receivable' ? 'Customer' : 'Supplier'}: same as voucher (${voucherClient.name})`
+                : `${subKind === 'receivable' ? 'Customer' : 'Supplier'}: choose…`}
+            </option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
       </td>
       <td>
         <input
@@ -2166,6 +2191,8 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
                   isLast={i === form.entries.length - 1}
                   accounts={accounts}
                   onFocus={(idx, side) => setLastFocused({ index: idx, side })}
+                  clients={clients}
+                  voucherClientId={form.clientId}
                 />
               ))}
             </tbody>

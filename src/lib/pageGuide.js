@@ -45,6 +45,16 @@ Tip: say "check my books" and I'll look for the problem.`,
 
 Tip: ask me "How much did we spend on travel this month?" to get a total without scrolling.`,
 
+  'subsidiary-ledger': `The **Subsidiary Ledger** breaks Accounts Receivable and Accounts Payable down by person:
+
+- **Customers** — how much each one owes you. **Suppliers** — how much you owe each one.
+- Open a name to see every invoice and payment behind their balance, with a running balance.
+- The line at the top checks that everyone adds up exactly to the account in your general ledger.
+- Lines that don't say who they're for appear as **Unassigned** — pick the right client there to fix them.
+- Switch to **Aging** to see each balance split into Current, 1–30, 31–60, 61–90 and Over 90 days.
+
+Tip: ask me "Who owes us money?", "Who is overdue?" or "How much does ABC Trading owe us?"`,
+
   'cash-flow': `**Cash Flow** shows money moving in and out of your cash and bank accounts.
 
 - A chart covers the last 6 months, with a list of recent cash transactions below it.

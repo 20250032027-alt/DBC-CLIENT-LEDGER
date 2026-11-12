@@ -20,6 +20,31 @@
 // must match exactly. Multi-word phrases match as a phrase.
 const FAQ = [
   {
+    id: 'aging',
+    goto: 'subsidiary-ledger',
+    groups: [['aging', 'aged', 'past due report'], ['how', 'what', 'explain', 'paano', 'ano', 'meaning']],
+    answer: `**Aging** shows how long each customer's (or supplier's) balance has been outstanding, in columns: **Current, 1–30, 31–60, 61–90 and Over 90 days**.
+
+- Open **Subsidiary Ledger** and switch to **Aging**. Pick an **As of** date to see it at any point in time.
+- Billing invoices are aged from their **due date**; other entries from the date they were recorded.
+- Payments are applied to the **oldest** charges first.
+- Each row adds up exactly to that customer's balance, and the totals match Accounts Receivable (or Payable).
+
+Ask me "Who is overdue?" for a quick list.`,
+  },
+  {
+    id: 'subsidiary-ledger',
+    goto: 'subsidiary-ledger',
+    groups: [['subsidiary', 'sub ledger', 'subledger', 'balance per customer', 'balance per supplier', 'customer balances', 'supplier balances', 'per client balance']],
+    answer: `The **Subsidiary Ledger** shows Accounts Receivable per customer and Accounts Payable per supplier:
+
+- Open **Subsidiary Ledger** in the sidebar (under Account Listing) and pick **Customers** or **Suppliers**.
+- Each name shows their balance; open it to see every entry, with a running balance.
+- The line at the top confirms everyone adds up to the account in your general ledger.
+
+To record who an entry is for: on a voucher, an **Accounts Receivable** or **Accounts Payable** line shows a small **customer/supplier picker** under the account. Leave it alone and the line uses the voucher's **Client**. Invoices from **Billing** fill this in automatically.`,
+  },
+  {
     id: 'who-are-you',
     groups: [['your name', 'who are you', 'what are you', 'are you a bot', 'are you ai', 'sino ka', 'pangalan mo', 'ano ka']],
     answer: `I'm **Tally**, your ledger buddy! I'm the assistant built into this app. I can answer questions about how the app works, calculate figures from your own books, check your books for problems, and remind you of tax deadlines.

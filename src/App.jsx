@@ -19,6 +19,7 @@ import Vouchers from './pages/Vouchers'
 import ChartOfAccounts from './pages/ChartOfAccounts'
 import TrialBalance from './pages/TrialBalance'
 import AccountListing from './pages/AccountListing'
+import SubsidiaryLedger from './pages/SubsidiaryLedger'
 import CashFlow from './pages/CashFlow'
 import ClosingBooks from './pages/ClosingBooks'
 import FinancialCondition from './pages/FinancialCondition'
@@ -35,7 +36,7 @@ import HelpChatWidget from './components/HelpChatWidget.jsx'
 import {
   LayoutDashboard, Users, FileText, Scale, Waves,
   BarChart3, Receipt, Settings as SettingsIcon, Menu, X,
-  BookOpen, BookText, LogOut, AlertCircle, Loader2,
+  BookOpen, BookText, BookUser, LogOut, AlertCircle, Loader2,
   WifiOff, RefreshCw, CloudUpload, CheckCircle2, Sun, Moon, Smartphone, Clock,
   FileBarChart, FileCheck, Percent, Package, Layers, Factory, ShoppingCart, PanelLeft, PanelLeftClose,
   ChevronDown, ChevronRight, Bug, HelpCircle, Lightbulb, MoreHorizontal, Camera, Trash2, HardDrive, Info, Lock,
@@ -49,6 +50,7 @@ const NAV = [
   { id: 'accounts', label: 'Chart of Accounts', icon: BookText },
   { id: 'trial-balance', label: 'Trial Balance', icon: Scale },
   { id: 'account-listing', label: 'Account Listing', icon: BookOpen },
+  { id: 'subsidiary-ledger', label: 'Subsidiary Ledger', icon: BookUser },
   { id: 'cash-flow', label: 'Cash Flow', icon: Waves },
   { id: 'closing-books', label: 'Closing Books', icon: Lock },
   { id: 'financial', label: 'Financial Reports', icon: BarChart3 },
@@ -65,7 +67,7 @@ const NAV = [
 
 const PAGE_TITLES = {
   dashboard: 'Dashboard', clients: 'Clients', vouchers: 'Vouchers',
-  accounts: 'Chart of Accounts', 'trial-balance': 'Trial Balance', 'account-listing': 'Account Listing', 'cash-flow': 'Cash Flow',
+  accounts: 'Chart of Accounts', 'trial-balance': 'Trial Balance', 'account-listing': 'Account Listing', 'subsidiary-ledger': 'Subsidiary Ledger', 'cash-flow': 'Cash Flow',
   'closing-books': 'Closing Books',
   financial: 'Financial Reports', 'tax-report': 'Tax Report', 'tax-return': 'Tax Return', 'ewt-report': 'EWT Report', billing: 'Billing',
   'raw-materials': 'Raw Materials', assembly: 'Product Assembly', production: 'Production', sales: 'Sales', settings: 'Settings',
@@ -73,7 +75,7 @@ const PAGE_TITLES = {
 
 const PAGES = {
   dashboard: Dashboard, clients: Clients, vouchers: Vouchers,
-  accounts: ChartOfAccounts, 'trial-balance': TrialBalance, 'account-listing': AccountListing, 'cash-flow': CashFlow,
+  accounts: ChartOfAccounts, 'trial-balance': TrialBalance, 'account-listing': AccountListing, 'subsidiary-ledger': SubsidiaryLedger, 'cash-flow': CashFlow,
   'closing-books': ClosingBooks,
   financial: FinancialCondition, 'tax-report': TaxReport, 'tax-return': TaxReturn, 'ewt-report': EWTReport, billing: Billing,
   'raw-materials': RawMaterials, assembly: Assembly, production: Production, sales: Sales, settings: Settings,
