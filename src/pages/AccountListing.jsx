@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate } from '../utils'
+import { fmt, fmtDate, todayLocal } from '../utils'
 import { ChevronDown, ChevronUp, Download, Search, X } from 'lucide-react'
 import TallyEmpty from '../components/TallyEmpty.jsx'
 
@@ -84,7 +84,7 @@ async function exportToExcel(accountSections, currency, dateFrom, dateTo) {
 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Account Listing')
-  const dateStr = new Date().toISOString().slice(0, 10)
+  const dateStr = todayLocal()
   XLSX.writeFile(wb, `dbc-client-ledger-account-listing-${dateStr}.xlsx`)
 }
 

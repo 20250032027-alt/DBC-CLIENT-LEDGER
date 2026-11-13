@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret, subsidiaryKindOf, findClientByName } from '../utils'
+import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret, subsidiaryKindOf, findClientByName, todayLocal } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink, Lock } from 'lucide-react'
 import { showToast } from '../lib/toast'
 import { compressAttachment } from '../lib/compressAttachment'
@@ -85,7 +85,7 @@ async function exportVouchersToExcel(vouchers, clients) {
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Vouchers')
   XLSX.utils.book_append_sheet(wb, wsEntries, 'Entries')
 
-  const dateStr = new Date().toISOString().slice(0, 10)
+  const dateStr = todayLocal()
   XLSX.writeFile(wb, `dbc-client-ledger-vouchers-${dateStr}.xlsx`)
 }
 
@@ -358,7 +358,7 @@ function ImportVouchersModal({ accounts, clients, vouchers, onImport, onAddAccou
   async function handleImport() {
     if (!parsed?.entries?.length) return
     setImporting(true)
-    const date = new Date().toISOString().slice(0, 10)
+    const date = todayLocal()
     const number = nextVoucherNumber(journalType, date, vouchers)
     // Imports are ALWAYS saved as a draft — even a perfectly clean one — so a
     // person checks it before it reaches the books, then posts it with the
@@ -856,7 +856,12 @@ function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, ind
       <td style={{ position: 'relative' }}>
         <AccountAutocomplete
           value={entry.account}
-          onChange={v => onChange({ ...entry, account: v, flagged: false })}
+          onChange={v => {
+            // A customer/supplier only belongs on an Accounts Receivable /
+            // Payable line — drop it if the account changes to anything else.
+            const { clientId, ...rest } = entry
+            onChange({ ...(subsidiaryKindOf(accounts, v) ? entry : rest), account: v, flagged: false })
+          }}
           onFocus={() => onFocus(index, 'debit')}
           accounts={accounts}
           placeholder="Account name"
@@ -1687,7 +1692,7 @@ function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
 function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, payeeIndex, settings, uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment }) {
   const blankEntry = () => ({ account: '', description: '', debit: '', credit: '', id: crypto.randomUUID() })
   const [form, setForm] = useState(voucher ? { ...voucher, memo: voucher.memo || '' } : {
-    type: 'general', date: new Date().toISOString().slice(0, 10),
+    type: 'general', date: todayLocal(),
     reference: '', memo: '', clientId: '', payee: '', payeeTin: '', payeeAddress: '',
     posted: true,
     entries: [blankEntry(), blankEntry()],

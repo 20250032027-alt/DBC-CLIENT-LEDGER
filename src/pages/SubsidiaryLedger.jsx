@@ -1,6 +1,6 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, formatTin, buildSubsidiaryLedger, buildLedger, postedOnly, accountKey, isoDate, buildAging, AGING_BUCKETS } from '../utils'
+import { fmt, formatTin, buildSubsidiaryLedger, buildLedger, postedOnly, accountKey, todayLocal, buildAging, AGING_BUCKETS } from '../utils'
 import { showToast } from '../lib/toast'
 import { Download, Search, ChevronDown, ChevronRight, CheckCircle, AlertCircle } from 'lucide-react'
 import TallyEmpty from '../components/TallyEmpty.jsx'
@@ -16,8 +16,6 @@ const KINDS = {
 
 // Footer cells get the same padding as body cells (the stylesheet only pads tbody).
 const FOOT = { padding: 'var(--density-td-p)', fontWeight: 700, borderTop: '2px solid var(--border2)' }
-
-function todayIso() { const d = new Date(); return isoDate(d.getFullYear(), d.getMonth(), d.getDate()) }
 
 async function exportToExcel(ledger, kind, asOf, currency) {
   const XLSX = await import('xlsx')
@@ -63,10 +61,10 @@ async function exportAgingToExcel(aging, kind, asOf, currency) {
 }
 
 export default function SubsidiaryLedger() {
-  const { vouchers, accounts, clients, bills, settings, updateVoucher } = useStore()
+  const { vouchers, accounts, clients, bills, settings, updateVoucher, isDateLocked } = useStore()
   const cur = settings?.currency
   const [kind, setKind] = useState('receivable')
-  const [asOf, setAsOf] = useState(todayIso())
+  const [asOf, setAsOf] = useState(todayLocal())
   const [search, setSearch] = useState('')
   const [hideSettled, setHideSettled] = useState(true)
   const [open, setOpen] = useState(() => new Set())
@@ -86,19 +84,20 @@ export default function SubsidiaryLedger() {
     return Math.round(ledger.controls.reduce((t, name) => { const r = ledgerMap[accountKey(name)]; return t + (r ? sign * (r.debit - r.credit) : 0) }, 0) * 100) / 100
   }, [vouchers, asOf, kind, ledger.controls])
   const reconciles = Math.abs(glBalance - ledger.total) < 0.005
-  const aging = useMemo(() => buildAging(ledger, { kind, asOf: asOf || todayIso(), bills }), [ledger, kind, asOf, bills])
+  const aging = useMemo(() => buildAging(ledger, { kind, asOf: asOf || todayLocal(), bills }), [ledger, kind, asOf, bills])
 
   const q = search.trim().toLowerCase()
   const rows = ledger.rows.filter(g => (!hideSettled || Math.abs(g.balance) >= 0.005) && (!q || g.client.name.toLowerCase().includes(q)))
-  const toggle = id => setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggle = id => setOpen(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   async function assign(entry, clientId) {
     if (!clientId) return
     const v = vouchers.find(x => x.id === entry.voucherId)
     if (!v) return
     const entries = (v.entries || []).map((e, i) => (i === entry.lineIndex ? { ...e, clientId } : e))
-    await updateVoucher(v.id, { entries })
-    showToast(`Assigned to ${clients.find(c => c.id === clientId)?.name || 'client'}.`, 'success')
+    // Only confirm when it really saved — a voucher in a closed period is
+    // refused (the store shows why), and must not also say "Assigned".
+    if (await updateVoucher(v.id, { entries })) showToast(`Assigned to ${clients.find(c => c.id === clientId)?.name || 'client'}.`, 'success')
   }
 
   const header = (
@@ -108,7 +107,7 @@ export default function SubsidiaryLedger() {
         <div className="page-sub">What each customer owes you, and what you owe each supplier</div>
       </div>
       <button className="btn btn-ghost" disabled={!ledger.rows.length && !ledger.unassigned || exporting}
-        onClick={async () => { setExporting(true); try { await (view === 'aging' ? exportAgingToExcel(aging, kind, asOf || todayIso(), cur) : exportToExcel(ledger, kind, asOf || todayIso(), cur)) } finally { setExporting(false) } }}>
+        onClick={async () => { setExporting(true); try { await (view === 'aging' ? exportAgingToExcel(aging, kind, asOf || todayLocal(), cur) : exportToExcel(ledger, kind, asOf || todayLocal(), cur)) } finally { setExporting(false) } }}>
         <Download size={15} /> {exporting ? 'Exporting…' : 'Export to Excel'}
       </button>
     </div>
@@ -177,7 +176,9 @@ export default function SubsidiaryLedger() {
               <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{e.debit ? fmt(e.debit, cur) : '—'}</td>
               <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{e.credit ? fmt(e.credit, cur) : '—'}</td>
               <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>
-                {assignable ? (
+                {assignable && isDateLocked(e.date) ? (
+                  <span style={{ fontSize: 11.5, color: 'var(--text-3)' }} title="Reopen this period in Closing Books to change it">Locked (closed period)</span>
+                ) : assignable ? (
                   <select className="form-select" style={{ fontSize: 12, padding: '3px 6px', width: 'auto', maxWidth: 190 }} defaultValue="" onChange={ev => assign(e, ev.target.value)}>
                     <option value="">Choose…</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

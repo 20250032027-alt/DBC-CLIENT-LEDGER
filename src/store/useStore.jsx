@@ -3,7 +3,7 @@ import { db, liveRowsFor } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { queueWrite, initSync, stopSync, onSyncStatusChange, pendingCount, syncNow } from '../lib/sync'
 import { DEFAULT_ACCOUNTS } from './defaultAccounts'
-import { nextVoucherNumber, nextBillNumber, nextPosSaleNumber, generateSalt, hashSecret, findAccount, canonicalEntries } from '../utils'
+import { nextVoucherNumber, nextBillNumber, nextPosSaleNumber, generateSalt, hashSecret, findAccount, canonicalEntries, todayLocal } from '../utils'
 
 const defaultSettings = {
   company: 'My Company',
@@ -238,13 +238,14 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   }
   async function updateVoucher(id, patch) {
     const existing = await db.vouchers.get(id)
-    if (!existing) { fail(null, 'Could not update voucher'); return }
+    if (!existing) { fail(null, 'Could not update voucher'); return false }
     // Both dates checked — can't edit a voucher sitting in a closed
     // period, and can't move an open voucher into one either.
-    if (blockedByClosing(voucherPeriodDate(existing)) || blockedByClosing(voucherPeriodDate({ ...existing, ...patch }))) return
+    if (blockedByClosing(voucherPeriodDate(existing)) || blockedByClosing(voucherPeriodDate({ ...existing, ...patch }))) return false
     if (patch.entries) patch = { ...patch, entries: canonicalEntries(patch.entries, accounts) }
     await queueWrite('vouchers', 'update', { ...existing, ...patch, id })
     await refreshFromLocal()
+    return true // callers can tell a saved change from a refused one
   }
   async function deleteVoucher(id) {
     const existing = await db.vouchers.get(id)
@@ -309,7 +310,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   }
 
   async function addBill(bill) {
-    if (blockedByClosing(bill.date || new Date().toISOString().slice(0, 10))) return null
+    if (blockedByClosing(bill.date || todayLocal())) return null
     const id = crypto.randomUUID()
     const rec = { id, userId, createdAt: new Date().toISOString(), number: null, status: 'unpaid', ...bill }
     await queueWrite('bills', 'insert', rec)
@@ -318,7 +319,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     const revAccount = bill.revenueAccount || coaName('Service Revenue', 'Sales Revenue', accounts)
     await insertVoucherRecord({
       type: 'general',
-      date: bill.date || new Date().toISOString().slice(0, 10),
+      date: bill.date || todayLocal(),
       memo: `Invoice (pending #) — ${bill.clientName || ''}`,
       reference: null,
       // The customer is recorded on the receivable line itself, so the
@@ -338,7 +339,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     const existing = await db.bills.get(id)
     if (!existing) { fail(null, 'Could not update invoice'); return }
     if (patch.status === 'paid' && existing.status !== 'paid' &&
-        blockedByClosing(patch.paidDate || new Date().toISOString().slice(0, 10))) return
+        blockedByClosing(patch.paidDate || todayLocal())) return
     const updated = { ...existing, ...patch, id }
     await queueWrite('bills', 'update', updated)
 
@@ -347,7 +348,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       const cashAccount = coaName(patch.cashAccount || 'Cash', null, accounts)
       await insertVoucherRecord({
         type: 'general',
-        date: patch.paidDate || new Date().toISOString().slice(0, 10),
+        date: patch.paidDate || todayLocal(),
         memo: `Collection for ${updated.number || 'invoice'} — ${updated.clientName || ''}`,
         reference: updated.number || null,
         clientId: updated.clientId || '',
@@ -392,7 +393,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   // non-taxed sale wouldn't have this line).
   async function addPosSale(sale) {
     const id = crypto.randomUUID()
-    const date = sale.date || new Date().toISOString().slice(0, 10)
+    const date = sale.date || todayLocal()
     if (blockedByClosing(date)) return null
     const number = nextPosSaleNumber(date, posSales)
 
@@ -470,7 +471,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     const id = crypto.randomUUID()
     const rec = {
       id, userId, createdAt: new Date().toISOString(),
-      entryType: 'intake', date: new Date().toISOString().slice(0, 10),
+      entryType: 'intake', date: todayLocal(),
       ...entry,
     }
     await queueWrite('rawMaterialEntries', 'insert', rec)
@@ -605,7 +606,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
   // not on every subsequent edit.
   async function addSalesInvoice(invoice, items) {
     const id = crypto.randomUUID()
-    const date = invoice.date || new Date().toISOString().slice(0, 10)
+    const date = invoice.date || todayLocal()
     if (blockedByClosing(date)) return null
     const total = items.reduce((s, it) => s + Number(it.amount || 0), 0)
 
@@ -952,6 +953,37 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     await refreshFromLocal()
   }
 
+  // ---- Backup & restore ----
+  // plan comes from planRestore() in lib/backup.js and was shown to the
+  // person before they confirmed. 'replace' removes everything first —
+  // closed periods first, so their locks don't block the rest, then the
+  // other tables in reverse dependency order. Records are written in the
+  // plan's order (closed periods last) and synced once at the end.
+  async function restoreBackup(plan, tableOrder) {
+    const current = { accounts, clients, vouchers, bills, templates, menuItems, posSales, rawMaterials, rawMaterialEntries,
+      products, assemblyItems, productionEntries, invoices, invoiceItems, periodClosings }
+    const opts = { silent: true, deferSync: true }
+    if (plan.mode === 'replace') {
+      for (const key of [...tableOrder].reverse()) for (const r of current[key] || []) await queueWrite(key, 'delete', { id: r.id }, opts)
+    }
+    let written = 0
+    for (const [key, records] of plan.steps) {
+      for (const rec of records) { await queueWrite(key, 'insert', { ...rec, userId }, opts); written++ }
+    }
+    if (plan.settings) {
+      // Company details come back from the backup; passwords and Team
+      // Members stay exactly as they are now (they're never in the file).
+      const keep = { deletePasswordHash: settings.deletePasswordHash, pwSalt: settings.pwSalt, teamMembers: settings.teamMembers }
+      await queueWrite('settings', 'update', { ...settings, ...plan.settings, ...keep, userId }, opts)
+    }
+    // A restored voucher whose number was already taken came in without
+    // one; give it the next free number now rather than on the next reload.
+    if (plan.renumbered) await backfillMissingNumbers()
+    await refreshFromLocal()
+    syncNow()
+    return written
+  }
+
   // ---- Danger zone ----
   async function deleteAllData() {
     // Closings go first — otherwise every voucher inside a closed period
@@ -994,7 +1026,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
       addSalesInvoice, updateSalesInvoice, deleteSalesInvoice,
       submitReport, loadMyReports,
       closeBooks, reopenPeriod, isDateLocked, computePeriodNetActivity, nextPeriodStart, latestOpenClosingId,
-      updateSettings, deleteAllData,
+      updateSettings, deleteAllData, restoreBackup,
     }}>
       {children}
     </StoreContext.Provider>

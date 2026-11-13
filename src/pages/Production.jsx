@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { verifySecret } from '../utils'
+import { verifySecret, todayLocal } from '../utils'
 import { Plus, X, Pencil, Trash2, Search, Lock, SlidersHorizontal } from 'lucide-react'
 
-function today() { return new Date().toISOString().slice(0, 10) }
+function today() { return todayLocal() }
 
 function ProductionFormModal({ entry, products, title, subtitle, allowNegative, onClose, onSave }) {
   const [form, setForm] = useState(entry

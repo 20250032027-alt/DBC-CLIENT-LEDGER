@@ -31,7 +31,9 @@ export function onSyncStatusChange(fn) { listeners.add(fn); return () => listene
 
 // ---- writes (called by the store, always local-first) ----
 
-export async function queueWrite(table, op, record, { silent = false } = {}) {
+// deferSync: write now, but don't start a sync for this one record — used by
+// Restore, which writes many records and then syncs once at the end.
+export async function queueWrite(table, op, record, { silent = false, deferSync = false } = {}) {
   const cfg = TABLES[table]
   const pkVal = record[cfg.pk]
   const now = new Date().toISOString()
@@ -43,6 +45,7 @@ export async function queueWrite(table, op, record, { silent = false } = {}) {
   }
   await db.outbox.add({ table, recordId: pkVal, op, payload: op === 'delete' ? null : { ...record, updatedAt: now }, ts: now, userId })
 
+  if (deferSync) return
   if (navigator.onLine) {
     syncNow()
   } else if (!silent) {
@@ -121,6 +124,8 @@ const PERMANENT_ERROR_CODES = new Set([
   '23514', // check_violation
   '22P02', // invalid_text_representation
   'PGRST205', // table doesn't exist in the database (see missingTables below)
+  'PGRST204', // a column the database doesn't have — retrying can never succeed
+  '42703', // undefined_column (same, reported by Postgres itself)
   '42P01', // undefined_table
 ])
 

@@ -225,6 +225,15 @@ export function postedOnly(vouchers = []) {
 // early. Quarterly tax returns covered Dec 31 → Mar 30 instead of
 // Jan 1 → Mar 31, putting last-day-of-quarter transactions in the wrong
 // return.
+// Today's date as "YYYY-MM-DD" in the device's own timezone. NOT
+// new Date().toISOString().slice(0, 10) — that's the UTC date, which in the
+// Philippines (UTC+8) is still YESTERDAY until 8 AM, so anything entered
+// early in the morning was dated the day before (on the 1st: the previous
+// month, or even the previous tax quarter).
+export function todayLocal(d = new Date()) {
+  return isoDate(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
 export function isoDate(year, month, day) {
   return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10)
 }

@@ -1,12 +1,12 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, verifySecret } from '../utils'
+import { fmt, verifySecret, todayLocal } from '../utils'
 import { Plus, X, Pencil, Trash2, Search, ChevronDown, ChevronRight, Lock } from 'lucide-react'
 
 const CHANNELS = ['Shopee', 'Direct', 'Export', 'Other']
 const PAYMENT_TYPES = ['Cash', 'Credit']
 
-function today() { return new Date().toISOString().slice(0, 10) }
+function today() { return todayLocal() }
 function emptyLine() { return { productId: '', quantity: '', amount: '' } }
 
 // Trim + title-case, so "ororama" and "ORORAMA" collapse to the same

@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, verifySecret } from '../utils'
+import { fmt, verifySecret, todayLocal } from '../utils'
 import { Plus, X, Pencil, Trash2, Search, Lock } from 'lucide-react'
 import { showToast } from '../lib/toast'
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'pc', 'sack', 'bag', 'box', 'roll', 'bottle', 'pack']
 
-function today() { return new Date().toISOString().slice(0, 10) }
+function today() { return todayLocal() }
 
 function typeBadge(entryType) {
   if (entryType === 'adjustment') return <span className="badge badge-blue">Adjustment</span>

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, postedOnly, normalizeTin, excludeClosingEntries } from '../utils'
+import { fmt, fmtDate, postedOnly, normalizeTin, excludeClosingEntries, todayLocal } from '../utils'
 import { FileBarChart, Download, X } from 'lucide-react'
 
 // Special revenue accounts that are VAT-exempt but still need to show up in
@@ -117,7 +117,7 @@ async function exportTaxReportToExcel({ scheme, rate, taxAccountName, from, to, 
   })
   XLSX.utils.book_append_sheet(wb, ws, 'Tax Report')
 
-  const dateStr = new Date().toISOString().slice(0, 10)
+  const dateStr = todayLocal()
   XLSX.writeFile(wb, `dbc-client-ledger-tax-report-${dateStr}.xlsx`)
 }
 

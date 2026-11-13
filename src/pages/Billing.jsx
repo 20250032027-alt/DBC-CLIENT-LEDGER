@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, nextBillNumber, normalizeTin } from '../utils'
+import { fmt, fmtDate, nextBillNumber, normalizeTin, todayLocal } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, Clock, AlertTriangle, Printer } from 'lucide-react'
 import TallyEmpty from '../components/TallyEmpty.jsx'
 
@@ -365,7 +365,7 @@ function LineRow({ line, onChange, onRemove }) {
 
 // ── MarkPaidModal ────────────────────────────────────────────────────────────
 function MarkPaidModal({ bill, onClose, onConfirm, cashAccounts }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayLocal())
   const [cashAccount, setCashAccount] = useState(cashAccounts[0]?.name || 'Cash')
 
   return (
@@ -411,7 +411,7 @@ function BillModal({ bill, onClose, onSave, clients, bills, accounts, taxRate, t
   const blankLine = () => ({ id: crypto.randomUUID(), description: '', qty: 1, rate: '' })
   const [form, setForm] = useState(bill || {
     clientId: '', clientName: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: todayLocal(),
     dueDate: '', lines: [blankLine()], notes: '', applyTax: true,
     receivableAccount: '',
     revenueAccount: '',
@@ -492,7 +492,7 @@ function BillModal({ bill, onClose, onSave, clients, bills, accounts, taxRate, t
                   onClick={() => {
                     const base = form.date ? new Date(form.date + 'T00:00:00') : new Date()
                     base.setDate(base.getDate() + d)
-                    setF('dueDate', base.toISOString().slice(0, 10))
+                    setF('dueDate', todayLocal(base)) // the local date — toISOString() is UTC, a day early here
                   }}>
                   +{d}d
                 </button>

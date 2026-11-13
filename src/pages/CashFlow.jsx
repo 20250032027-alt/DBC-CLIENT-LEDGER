@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
 import { useTheme } from '../lib/theme.jsx'
-import { fmt, fmtDate, postedOnly } from '../utils'
+import { fmt, fmtDate, postedOnly, todayLocal } from '../utils'
 import { ArrowUpRight, ArrowDownRight, Waves, Download, X } from 'lucide-react'
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import TallyEmpty from '../components/TallyEmpty.jsx'
@@ -123,7 +123,7 @@ async function exportCashFlowToExcel({ from, to, beginningBalance, operatingIn, 
   XLSX.utils.book_append_sheet(wb, makeSheet(summaryRows), 'Cash Flow Summary')
   XLSX.utils.book_append_sheet(wb, makeSheet(detailSheetRows), 'Cash Flow Detail')
 
-  const dateStr = new Date().toISOString().slice(0, 10)
+  const dateStr = todayLocal()
   XLSX.writeFile(wb, `dbc-client-ledger-cash-flow-${dateStr}.xlsx`)
 }
 

@@ -85,6 +85,25 @@ the one concept almost every question eventually comes back to.
   debits and credits don't match can't be posted until it's fixed
 - Each line's description is the **payee** only
 
+# Backup & restore (Settings → Data)
+
+- **Download backup (Excel)** saves the whole ledger as one Excel file:
+  vouchers (one row per line), accounts, clients, invoices, templates,
+  inventory, closed periods and company settings. Each record keeps its id.
+  Receipt photos/attachments and passwords are NOT included.
+- **Restore from backup** reads that file and always shows a preview first:
+  - **Add what's missing** (safe default): only records not in the app now
+    are added; nothing existing changes; restoring the same file twice adds
+    nothing. Vouchers dated in a closed period are skipped (reopen the
+    period first, or use Replace). A restored voucher whose number is
+    already used gets the next free number.
+  - **Replace everything**: for a full recovery. Asks for the deletion
+    password if one is set and to type REPLACE; downloads a backup of the
+    current data first. Passwords and Team Members stay as they are.
+- Only files made by this app's Download backup can be restored. The file
+  can be opened and read in Excel; renaming sheets or the id columns stops
+  it from restoring.
+
 # Subsidiary Ledger
 
 - A page in the sidebar (after Account Listing) that breaks the control

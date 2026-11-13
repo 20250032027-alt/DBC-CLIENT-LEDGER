@@ -9,6 +9,7 @@ import { formatTin, normalizeTin, generateSalt, hashSecret } from '../utils'
 import { useTheme, ACCENT_PRESETS } from '../lib/theme.jsx'
 import { useTutorial } from '../lib/tutorial.jsx'
 import { isValidHex, checkAccentAccessibility, pickReadableTextColor } from '../lib/colorUtils'
+import BackupRestore from '../components/BackupRestore.jsx'
 
 // Mirrors App.jsx's NAV ids/labels for the per-tab permission checkboxes
 // below. Keep in sync if pages are ever added, renamed, or removed there.
@@ -223,7 +224,7 @@ export default function Settings({ userEmail }) {
     helpAssistant: 'tally help assistant ai chat chatbot data numbers voice mic microphone',
     account: 'account sign out email',
     install: 'install app pwa home screen',
-    data: 'data delete password reset export backup danger',
+    data: 'data delete password reset export backup danger backup restore excel download export',
   }
   const query = search.trim().toLowerCase()
   function show(sectionId) {
@@ -751,10 +752,12 @@ export default function Settings({ userEmail }) {
       {show('data') && (
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-title" style={{ marginBottom: 12 }}>Data</div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
-          Your data is synced to your Supabase cloud database, so it's backed up and
-          available from any device you sign into.
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>
+          Your data is synced to the cloud, so it's available from any device you sign into.
+          For a copy you keep yourself, download a backup below.
         </div>
+
+        <BackupRestore />
 
         <div className="form-group" style={{ marginBottom: 14, maxWidth: 320 }}>
           <label className="form-label">Deletion Password <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional)</span></label>

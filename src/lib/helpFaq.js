@@ -20,6 +20,19 @@
 // must match exactly. Multi-word phrases match as a phrase.
 const FAQ = [
   {
+    id: 'backup',
+    goto: 'settings',
+    groups: [['backup', 'back up', 'restore', 'save a copy', 'copy of my data', 'copy of all', 'download all', 'export all', 'i-backup']],
+    answer: `Go to **Settings → Data → Backup & restore**.
+
+- **Download backup (Excel)** saves everything — vouchers, accounts, clients, invoices and more — in one Excel file you can keep.
+- **Restore from backup** brings it back. You'll see exactly what will happen before anything changes:
+  - **Add what's missing** (safe) only brings back records that aren't in the app now.
+  - **Replace everything** is for a full recovery. It asks for the deletion password, and downloads a backup of your current data first.
+
+Receipt photos and passwords aren't included in the file. Tip: download a backup regularly, like at the end of each month.`,
+  },
+  {
     id: 'aging',
     goto: 'subsidiary-ledger',
     groups: [['aging', 'aged', 'past due report'], ['how', 'what', 'explain', 'paano', 'ano', 'meaning']],

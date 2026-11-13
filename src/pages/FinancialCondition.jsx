@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, postedOnly, buildLedger, buildFinancialSections as buildSections, foldBillingIntoSections, excludeClosingEntries } from '../utils'
+import { fmt, postedOnly, buildLedger, buildFinancialSections as buildSections, foldBillingIntoSections, excludeClosingEntries, todayLocal } from '../utils'
 import { X, Download } from 'lucide-react'
 import TallyEmpty from '../components/TallyEmpty.jsx'
 
@@ -79,7 +79,7 @@ async function exportFinancialReportToExcel({
   XLSX.utils.book_append_sheet(wb, makeSheet(bsRows), 'Balance Sheet')
   XLSX.utils.book_append_sheet(wb, makeSheet(isRows), 'Income Statement')
 
-  const dateStr = new Date().toISOString().slice(0, 10)
+  const dateStr = todayLocal()
   XLSX.writeFile(wb, `dbc-client-ledger-financial-report-${dateStr}.xlsx`)
 }
 

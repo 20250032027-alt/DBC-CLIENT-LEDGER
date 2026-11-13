@@ -132,7 +132,7 @@ Production uses these recipes to use up raw materials automatically.`,
 - **Team Members**, so each person has their own access.
 - **Appearance** — dark mode, text size, colors.
 - The **Tutorial**, and the **Help Assistant** settings, including whether I can see your peso figures.
-- **Data** — the deletion password, and other data tools.`,
+- **Data** — **Backup & restore** (your whole ledger as one Excel file), the deletion password, and other data tools.`,
 }
 
 export const EXPLAIN_PAGE = /explain (this|the) (page|screen)|what('s| is) this (page|screen|for)|what am i looking at|ano (ito|to)\b|para saan (ito|to)|i-?explain/i

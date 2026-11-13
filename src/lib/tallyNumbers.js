@@ -258,9 +258,10 @@ function answerSubsidiary(q, data, cur, result, now = new Date()) {
   const clients = data.clients || []
   // A client named in the question (longest name first, so "ABC Trading
   // Corp" wins over "ABC").
+  const esc = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const named = [...clients].filter(c => (c.name || '').trim().length >= 3)
     .sort((a, b) => b.name.length - a.name.length)
-    .find(c => q.includes(c.name.trim().toLowerCase()))
+    .find(c => new RegExp(`(^|[^a-z0-9ñ])${esc(c.name.trim().toLowerCase())}($|[^a-z0-9ñ])`).test(q)) // whole words: "Ana" isn't found in "kanan"
   // "Who is overdue?" — customers with past-due amounts, from the aging.
   if (has(q, RE.overdueWho) && !has(q, /invoices?\b/)) {
     const today = isoDate(now.getFullYear(), now.getMonth(), now.getDate())
