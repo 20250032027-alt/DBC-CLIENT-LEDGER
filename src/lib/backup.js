@@ -38,7 +38,7 @@ export const BACKUP_TABLES = [
   ['productionEntries', 'Production'],
   ['periodClosings', 'Closed Periods'],
 ]
-const SECRET_SETTINGS = new Set(['deletePasswordHash', 'pwSalt', 'teamMembers'])
+const SECRET_SETTINGS = new Set(['deletePasswordHash', 'pwSalt', 'teamMembers', 'voucherPasswords'])
 const JSON_SUFFIX = ' (json)'
 const EXCEL_CELL_LIMIT = 32000 // Excel's hard limit is 32,767 characters
 

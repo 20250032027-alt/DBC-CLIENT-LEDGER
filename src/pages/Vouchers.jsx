@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, verifySecret, subsidiaryKindOf, findClientByName, todayLocal } from '../utils'
+import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, subsidiaryKindOf, findClientByName, todayLocal, voucherLock, checkVoucherPassword, VOUCHER_ACTIONS } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink, Lock } from 'lucide-react'
 import { showToast } from '../lib/toast'
 import { compressAttachment } from '../lib/compressAttachment'
@@ -859,7 +859,7 @@ function EntryRow({ entry, onChange, onRemove, onAddBelow, accounts, isLast, ind
           onChange={v => {
             // A customer/supplier only belongs on an Accounts Receivable /
             // Payable line — drop it if the account changes to anything else.
-            const { clientId, ...rest } = entry
+            const { clientId: _dropped, ...rest } = entry
             onChange({ ...(subsidiaryKindOf(accounts, v) ? entry : rest), account: v, flagged: false })
           }}
           onFocus={() => onFocus(index, 'debit')}
@@ -1553,14 +1553,14 @@ function DeleteVoucherModal({ voucher, settings, onClose, onConfirm }) {
   const [typed, setTyped] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const requiresPassword = !!(settings?.deletePasswordHash)
+  const requiresPassword = !!voucherLock(settings, 'delete')
 
   async function handleConfirm() {
     if (typed.trim() !== voucher.number) {
       setError(`Type the voucher number exactly as shown: ${voucher.number}`)
       return
     }
-    if (requiresPassword && !(await verifySecret(password, settings.pwSalt, settings.deletePasswordHash))) {
+    if (!(await checkVoucherPassword(settings, 'delete', password))) {
       setError('Incorrect password.')
       return
     }
@@ -1594,7 +1594,7 @@ function DeleteVoucherModal({ voucher, settings, onClose, onConfirm }) {
 
         {requiresPassword && (
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Password</label>
+            <label className="form-label">Delete password</label>
             <input
               type="password"
               className="form-input"
@@ -1625,7 +1625,7 @@ function DeleteVoucherModal({ voucher, settings, onClose, onConfirm }) {
 function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const requiresPassword = !!(settings?.deletePasswordHash)
+  const requiresPassword = !!voucherLock(settings, 'post')
   const entryCount = (voucher.entries || []).length
   // Posting an unbalanced voucher would throw the Trial Balance off. The edit
   // window never lets one be saved, but a Bulk Import draft can be (a blank
@@ -1634,7 +1634,7 @@ function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
 
   async function handleConfirm() {
     if (!balanced) return
-    if (requiresPassword && !(await verifySecret(password, settings.pwSalt, settings.deletePasswordHash))) {
+    if (!(await checkVoucherPassword(settings, 'post', password))) {
       setError('Incorrect password.')
       return
     }
@@ -1657,7 +1657,7 @@ function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
 
         {requiresPassword && (
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Password</label>
+            <label className="form-label">Post password</label>
             <input
               autoFocus
               type="password"
@@ -1683,6 +1683,38 @@ function PostVoucherModal({ voucher, settings, onClose, onConfirm }) {
         <div className="modal-footer" style={{ marginTop: 20 }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={handleConfirm} disabled={!balanced}>Post Voucher</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Asks for one voucher action's password before it goes ahead. The voucher
+// window stays open underneath, so a wrong password never loses any work.
+function VoucherPasswordPrompt({ action, settings, onDone }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const info = VOUCHER_ACTIONS.find(a => a.key === action)
+  async function confirm() {
+    if (await checkVoucherPassword(settings, action, password)) onDone(true)
+    else setError('Incorrect password.')
+  }
+  return (
+    <div className="modal-backdrop" style={{ zIndex: 1100 }} onClick={e => e.target === e.currentTarget && onDone(false)}>
+      <div className="modal" style={{ maxWidth: 380 }} onKeyDown={e => e.key === 'Escape' && onDone(false)}>
+        <div className="modal-header">
+          <span className="modal-title">Password needed</span>
+          <button className="icon-btn" onClick={() => onDone(false)}><X size={18} /></button>
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.5 }}>
+          <strong style={{ color: 'var(--text-1)' }}>{info?.label}</strong> is protected by a password.
+        </div>
+        <input autoFocus type="password" className="form-input" placeholder="Password" value={password}
+          onChange={e => { setPassword(e.target.value); setError('') }} onKeyDown={e => e.key === 'Enter' && confirm()} />
+        {error && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{error}</div>}
+        <div className="modal-footer" style={{ marginTop: 18 }}>
+          <button className="btn btn-ghost" onClick={() => onDone(false)}>Cancel</button>
+          <button className="btn btn-primary" onClick={confirm}>Continue</button>
         </div>
       </div>
     </div>
@@ -2239,14 +2271,25 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
 
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary"
-            disabled={!balanced || form.entries.length === 0 || form.entries.some(e => {
+          {(() => {
+            const invalid = !balanced || form.entries.length === 0 || form.entries.some(e => {
               const v = (e.account || '').trim()
               return v.length > 0 && !accounts.map(a => a.name.trim().toLowerCase()).includes(v.toLowerCase())
-            })}
-            onClick={() => onSave(form)}>
-            {voucher ? 'Save Changes' : 'Post Voucher'}
-          </button>
+            })
+            // A posted voucher is edited in place. Anything else can be kept
+            // as a draft (doesn't count in reports yet) or posted (final).
+            if (voucher && voucher.posted !== false) {
+              return <button className="btn btn-primary" disabled={invalid} onClick={() => onSave({ ...form, posted: true }, 'edit')}>Save Changes</button>
+            }
+            return (<>
+              <button className="btn btn-ghost" disabled={invalid} onClick={() => onSave({ ...form, posted: false }, 'save')}>
+                {voucher ? 'Save Draft' : 'Save as Draft'}
+              </button>
+              <button className="btn btn-primary" disabled={invalid} onClick={() => onSave({ ...form, posted: true }, 'post')}>
+                {voucher ? 'Save & Post' : 'Post Voucher'}
+              </button>
+            </>)
+          })()}
         </div>
       </div>
     </div>
@@ -2261,6 +2304,10 @@ export default function Vouchers() {
   const [modal, setModal] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [postTarget, setPostTarget] = useState(null)
+  const [pwPrompt, setPwPrompt] = useState(null) // { action, resolve }
+  // Resolves true when the action may go ahead: no password set for it, or
+  // the right one was entered.
+  const passwordOk = action => (voucherLock(settings, action) ? new Promise(resolve => setPwPrompt({ action, resolve })) : Promise.resolve(true))
   const [showImport, setShowImport] = useState(false)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -2512,7 +2559,7 @@ export default function Vouchers() {
           onSaveTemplate={addTemplate}
           onDeleteTemplate={deleteTemplate}
           onClose={() => setModal(null)}
-          onSave={form => {
+          onSave={async (form, action) => {
             // Checked here, before the modal closes, so someone who typed a
             // back-dated voucher into a closed period gets told why and
             // keeps their work, instead of the form vanishing while the
@@ -2521,12 +2568,18 @@ export default function Vouchers() {
               showToast('That date is in a closed accounting period. Pick a later date, or reopen the period in Closing Books.', 'error', 6000)
               return
             }
+            if (!(await passwordOk(action))) return // window stays open, nothing lost
             const withNumber = form.number ? form : { ...form, number: nextVoucherNumber(form.type, form.date, vouchers) }
             if (modal === 'new') addVoucher(withNumber)
             else updateVoucher(modal.id, withNumber)
             setModal(null)
           }}
         />
+      )}
+
+      {pwPrompt && (
+        <VoucherPasswordPrompt action={pwPrompt.action} settings={settings}
+          onDone={ok => { pwPrompt.resolve(ok); setPwPrompt(null) }} />
       )}
 
       {deleteTarget && (

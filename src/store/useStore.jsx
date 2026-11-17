@@ -973,7 +973,7 @@ export function StoreProvider({ children, userId, initialCompany, userEmail }) {
     if (plan.settings) {
       // Company details come back from the backup; passwords and Team
       // Members stay exactly as they are now (they're never in the file).
-      const keep = { deletePasswordHash: settings.deletePasswordHash, pwSalt: settings.pwSalt, teamMembers: settings.teamMembers }
+      const keep = { deletePasswordHash: settings.deletePasswordHash, pwSalt: settings.pwSalt, teamMembers: settings.teamMembers, voucherPasswords: settings.voucherPasswords }
       await queueWrite('settings', 'update', { ...settings, ...plan.settings, ...keep, userId }, opts)
     }
     // A restored voucher whose number was already taken came in without

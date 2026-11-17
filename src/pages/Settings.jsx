@@ -10,6 +10,7 @@ import { useTheme, ACCENT_PRESETS } from '../lib/theme.jsx'
 import { useTutorial } from '../lib/tutorial.jsx'
 import { isValidHex, checkAccentAccessibility, pickReadableTextColor } from '../lib/colorUtils'
 import BackupRestore from '../components/BackupRestore.jsx'
+import VoucherPasswords from '../components/VoucherPasswords.jsx'
 
 // Mirrors App.jsx's NAV ids/labels for the per-tab permission checkboxes
 // below. Keep in sync if pages are ever added, renamed, or removed there.
@@ -72,6 +73,14 @@ export default function Settings({ userEmail }) {
   const { openMenu: openTutorialMenu } = useTutorial()
   const [search, setSearch] = useState('')
   const [form, setForm] = useState(settings)
+  // Every save on this page goes through here. Voucher passwords are saved by
+  // their own section the moment they're set; this page's form is a copy
+  // taken when it opened, so it must never write them back (that would undo
+  // a password set since).
+  const persist = updated => {
+    const { voucherPasswords: _managedElsewhere, ...rest } = updated
+    return updateSettings(rest)
+  }
   const [saved, setSaved] = useState(false)
   const [resetting, setResetting] = useState(false)
 
@@ -110,7 +119,7 @@ export default function Settings({ userEmail }) {
         const dataUrl = canvas.toDataURL('image/png')
         const updated = { ...form, logo: dataUrl }
         setForm(updated)
-        updateSettings(updated)
+        persist(updated)
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
       }
@@ -123,11 +132,11 @@ export default function Settings({ userEmail }) {
   function removeLogo() {
     const updated = { ...form, logo: '' }
     setForm(updated)
-    updateSettings(updated)
+    persist(updated)
   }
 
   function save() {
-    updateSettings(form)
+    persist(form)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -144,14 +153,14 @@ export default function Settings({ userEmail }) {
     const deletePasswordHash = await hashSecret(newDeletePassword, salt)
     const updated = { ...form, deletePasswordHash, deletePassword: '', pwSalt: salt }
     setForm(updated)
-    updateSettings(updated)
+    persist(updated)
     setNewDeletePassword('')
   }
 
   function clearDeletePassword() {
     const updated = { ...form, deletePasswordHash: '', deletePassword: '' }
     setForm(updated)
-    updateSettings(updated)
+    persist(updated)
   }
 
   // ── Team Members: persists immediately on every change, same reasoning
@@ -167,7 +176,7 @@ export default function Settings({ userEmail }) {
   function persistTeam(updatedMembers, salt) {
     const updated = { ...form, teamMembers: updatedMembers, ...(salt ? { pwSalt: salt } : {}) }
     setForm(updated)
-    updateSettings(updated)
+    persist(updated)
   }
 
   async function addMember() {
@@ -224,7 +233,7 @@ export default function Settings({ userEmail }) {
     helpAssistant: 'tally help assistant ai chat chatbot data numbers voice mic microphone',
     account: 'account sign out email',
     install: 'install app pwa home screen',
-    data: 'data delete password reset export backup danger backup restore excel download export',
+    data: 'data delete password reset export backup danger backup restore excel download export voucher passwords save post edit lock protect',
   }
   const query = search.trim().toLowerCase()
   function show(sectionId) {
@@ -666,7 +675,7 @@ export default function Settings({ userEmail }) {
             onChange={e => {
               const updated = { ...form, helpAssistantDataEnabled: e.target.checked }
               setForm(updated)
-              updateSettings(updated)
+              persist(updated)
             }}
             style={{ marginTop: 2 }}
           />
@@ -759,10 +768,12 @@ export default function Settings({ userEmail }) {
 
         <BackupRestore />
 
+        <VoucherPasswords />
+
         <div className="form-group" style={{ marginBottom: 14, maxWidth: 320 }}>
-          <label className="form-label">Deletion Password <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional)</span></label>
+          <label className="form-label">Other deletions password <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional)</span></label>
           <div style={{ fontSize: 11.5, color: form.deletePasswordHash ? 'var(--green)' : 'var(--text-3)', marginBottom: 6 }}>
-            {form.deletePasswordHash ? 'A password is currently set.' : 'No password set — deletion only asks for the voucher number.'}
+            {form.deletePasswordHash ? 'A password is currently set.' : 'No password set.'}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input className="form-input" type="password" value={newDeletePassword}
@@ -773,8 +784,8 @@ export default function Settings({ userEmail }) {
             {form.deletePasswordHash && <button className="btn btn-ghost btn-sm" onClick={clearDeletePassword}>Clear</button>}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
-            If set, deleting a voucher will ask for this password in addition to typing
-            the voucher number — an extra check against accidental deletion. Stored as a
+            Asked for when deleting a sale or a stock entry, and for "Replace everything" in Restore.
+            (Vouchers have their own passwords, above.) Stored as a
             salted hash, not in plain text — saves immediately, no need to click "Save
             Settings" below for this field.
           </div>

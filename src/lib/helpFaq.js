@@ -83,27 +83,29 @@ Ask me in English, Filipino, or Taglish.`,
     id: 'create-voucher',
     goto: 'vouchers',
     groups: [['new', 'create', 'add', 'record', 'make', 'enter', 'gawa', 'gumawa', 'mag-record', 'input'], ['voucher', 'transaction', 'journal entry', 'expense', 'sale']],
-    exclude: ['bulk', 'import', 'excel', 'many', 'template'],
+    exclude: ['bulk', 'import', 'excel', 'many', 'template', 'password'],
     answer: `Go to **Vouchers** and click **New Voucher**.
 
 1. Pick the voucher type (for example, Cash Voucher for an expense, Sales Voucher for a sale).
 2. Add the entries. Each line debits or credits one account, and total debits must equal total credits.
-3. Save. It starts as a **Draft**, which doesn't count in any report yet.
-4. When it's correct, **post** it with the checkmark icon so it counts in your reports.`,
+3. Click **Save as Draft** to keep working on it later (a draft doesn't count in any report), or **Post Voucher** to make it final right away.
+4. A draft can be posted later with the **checkmark icon** on its row, or by opening it and clicking **Save & Post**.`,
   },
   {
     id: 'post-voucher',
     goto: 'vouchers',
     groups: [['post', 'i-post', 'finalize', 'finalise'], ['voucher', 'draft', 'entry', 'entries', 'transaction']],
-    answer: `Find the voucher in **Vouchers** and click the **checkmark icon** on its row. The checkmark only shows on drafts.
+    exclude: ['password'],
+    answer: `Find the draft in **Vouchers** and click the **checkmark icon** on its row (it only shows on drafts), or open it and click **Save & Post**.
 
-You'll be asked to confirm, and if a deletion password is set in Settings, to enter it too. Once posted, the voucher counts in Trial Balance, Financial Reports, Tax Report, and the other reports. Drafts never do.`,
+You'll be asked to confirm, and if a **Post** password is set in **Settings → Data → Voucher passwords**, to enter it too. Once posted, the voucher counts in Trial Balance, Financial Reports, Tax Report, and the other reports. Drafts never do.`,
   },
   {
     id: 'edit-voucher',
     goto: 'vouchers',
     groups: [['edit', 'change', 'fix', 'correct', 'update', 'modify', 'palitan', 'baguhin', 'ayusin'], ['voucher', 'entry', 'entries', 'transaction']],
-    answer: `In **Vouchers**, click the **pencil icon** on the voucher's row.
+    exclude: ['password'],
+    answer: `In **Vouchers**, click the **pencil icon** on the voucher's row. For a draft, click **Save Draft** or **Save & Post** when done. For a posted voucher, click **Save Changes**. Any of these may ask for a password if one is set in **Settings → Data → Voucher passwords**.
 
 If you see a **lock icon** instead, the voucher is inside a closed accounting period. Go to **Closing Books**, reopen the most recent closing, make the change, then close the period again.`,
   },
@@ -111,7 +113,7 @@ If you see a **lock icon** instead, the voucher is inside a closed accounting pe
     id: 'delete-voucher',
     goto: 'vouchers',
     groups: [['delete', 'remove', 'erase', 'burahin', 'tanggalin'], ['voucher', 'entry', 'transaction']],
-    exclude: ['all my data', 'everything', 'attachment', 'receipt', 'file'],
+    exclude: ['all my data', 'everything', 'attachment', 'receipt', 'file', 'password'],
     answer: `In **Vouchers**, click the **trash icon** on the voucher's row. To confirm, type the exact voucher number, plus the deletion password if one is set in Settings. This is on purpose, so financial records aren't deleted by accident.
 
 If you see a **lock icon** instead, the voucher is in a closed period. Reopen it in **Closing Books** first.`,
@@ -186,9 +188,18 @@ Worth knowing: everyone still shares the same login underneath. This prevents ac
   {
     id: 'deletion-password',
     goto: 'settings',
-    groups: [['password'], ['delete', 'deletion', 'deleting', 'posting', 'set', 'change']],
+    groups: [['password'], ['delete', 'deletion', 'deleting', 'posting', 'post', 'save', 'saving', 'draft', 'edit', 'editing', 'voucher', 'set', 'change', 'protect', 'lock']],
     exclude: ['login', 'log in', 'sign in', 'email', 'forgot', 'team', 'member'],
-    answer: `The deletion password is in **Settings → Data**. When it's set, the app asks for it before deleting or posting a voucher, on top of the usual confirmation.`,
+    answer: `Go to **Settings → Data → Voucher passwords**. Each of these can have its own password:
+
+- **Save a draft:** creating a draft or saving changes to one.
+- **Post (make final):** turning a voucher into a final one that counts in reports.
+- **Edit a posted voucher:** changing a voucher after it's posted.
+- **Delete a voucher.**
+
+Click **Set password** beside any of them. To change or turn one off, you'll need its current password. Use the same password for all of them if you prefer.
+
+A separate **Other deletions password** (same page) protects deleting sales and stock entries, and "Replace everything" in Restore.`,
   },
   {
     id: 'appearance',

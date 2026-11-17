@@ -421,6 +421,33 @@ export async function hashSecret(secret, salt) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// ── Voucher passwords ──
+// Four voucher actions can each be protected by their own password, set in
+// Settings → Data (stored as settings.voucherPasswords = { save, post, edit,
+// delete }, each { hash, salt } or null — never the password itself).
+//   save   — saving a draft (a new one, or changes to one)
+//   post   — posting: making a voucher final, so it counts in reports
+//   edit   — changing a voucher that's already posted
+//   delete — deleting a voucher
+// Until voucher passwords are set up, the older single "deletion password"
+// keeps protecting delete and post exactly as before.
+export const VOUCHER_ACTIONS = [
+  { key: 'save', label: 'Save a draft', help: 'Creating a draft, or saving changes to one.' },
+  { key: 'post', label: 'Post (make final)', help: 'Turning a voucher into a final one that counts in your reports.' },
+  { key: 'edit', label: 'Edit a posted voucher', help: 'Changing a voucher after it has been posted.' },
+  { key: 'delete', label: 'Delete a voucher', help: 'Removing a voucher for good.' },
+]
+export function voucherLock(settings, action) {
+  const vp = settings?.voucherPasswords
+  if (vp && typeof vp === 'object') return vp[action]?.hash ? vp[action] : null
+  if ((action === 'delete' || action === 'post') && settings?.deletePasswordHash) return { hash: settings.deletePasswordHash, salt: settings.pwSalt }
+  return null
+}
+export async function checkVoucherPassword(settings, action, password) {
+  const lock = voucherLock(settings, action)
+  return !lock || verifySecret(password || '', lock.salt, lock.hash)
+}
+
 export async function verifySecret(secret, salt, hash) {
   if (!hash) return false
   return (await hashSecret(secret, salt)) === hash

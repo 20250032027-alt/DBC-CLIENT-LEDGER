@@ -85,6 +85,21 @@ the one concept almost every question eventually comes back to.
   debits and credits don't match can't be posted until it's fixed
 - Each line's description is the **payee** only
 
+# Voucher passwords (Settings → Data)
+
+- Four voucher actions can each have their own password: **Save a draft**
+  (creating a draft or saving changes to one), **Post (make final)**,
+  **Edit a posted voucher**, and **Delete a voucher**. Each is switched on by
+  setting a password beside it; changing or turning one off asks for its
+  current password. People may use the same password for all four.
+- In the voucher window: a new voucher has **Save as Draft** and **Post
+  Voucher**; a draft has **Save Draft** and **Save & Post**; a posted voucher
+  has **Save Changes**. A wrong password keeps the window open, nothing lost.
+- Accounts that had the older single deletion password keep it for delete
+  and post until voucher passwords are set. A separate "Other deletions
+  password" protects deleting sales and stock entries and "Replace
+  everything" in Restore. Passwords are never included in backups.
+
 # Backup & restore (Settings → Data)
 
 - **Download backup (Excel)** saves the whole ledger as one Excel file:
