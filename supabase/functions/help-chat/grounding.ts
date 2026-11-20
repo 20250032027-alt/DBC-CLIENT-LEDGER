@@ -95,6 +95,10 @@ the one concept almost every question eventually comes back to.
 - In the voucher window: a new voucher has **Save as Draft** and **Post
   Voucher**; a draft has **Save Draft** and **Save & Post**; a posted voucher
   has **Save Changes**. A wrong password keeps the window open, nothing lost.
+- The edit password is only asked when a posted voucher actually changes
+  (amounts, accounts, dates, memo, etc.) or when removing its receipt.
+  Opening one to look, or clicking Save Changes with nothing changed, just
+  closes the window. Adding a receipt never needs a password.
 - Accounts that had the older single deletion password keep it for delete
   and post until voucher passwords are set. A separate "Other deletions
   password" protects deleting sales and stock entries and "Replace

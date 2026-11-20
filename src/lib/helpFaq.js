@@ -194,7 +194,7 @@ Worth knowing: everyone still shares the same login underneath. This prevents ac
 
 - **Save a draft:** creating a draft or saving changes to one.
 - **Post (make final):** turning a voucher into a final one that counts in reports.
-- **Edit a posted voucher:** changing a voucher after it's posted.
+- **Edit a posted voucher:** saving real changes to a posted voucher, or removing its receipt. Opening one to look, or saving with nothing changed, never asks.
 - **Delete a voucher.**
 
 Click **Set password** beside any of them. To change or turn one off, you'll need its current password. Use the same password for all of them if you prefer.

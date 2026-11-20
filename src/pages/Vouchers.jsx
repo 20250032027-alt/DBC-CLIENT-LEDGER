@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { useStore } from '../store/useStore.jsx'
-import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, subsidiaryKindOf, findClientByName, todayLocal, voucherLock, checkVoucherPassword, VOUCHER_ACTIONS } from '../utils'
+import { fmt, fmtDate, voucherTotals, VOUCHER_TITLE, nextVoucherNumber, formatTin, normalizeTin, subsidiaryKindOf, findClientByName, todayLocal, voucherLock, checkVoucherPassword, VOUCHER_ACTIONS, voucherContentKey } from '../utils'
 import { Plus, X, Trash2, Pencil, Search, CheckCircle, AlertCircle, FileText, Download, BookMarked, ChevronDown, ChevronUp, Delete, Calculator, Printer, Paperclip, Loader2, ExternalLink, Lock } from 'lucide-react'
 import { showToast } from '../lib/toast'
 import { compressAttachment } from '../lib/compressAttachment'
@@ -1721,7 +1721,7 @@ function VoucherPasswordPrompt({ action, settings, onDone }) {
   )
 }
 
-function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, payeeIndex, settings, uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment }) {
+function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, onSaveTemplate, onDeleteTemplate, recentMemos, payeeIndex, settings, uploadVoucherAttachment, getVoucherAttachmentUrl, deleteVoucherAttachment, askPassword = async () => true }) {
   const blankEntry = () => ({ account: '', description: '', debit: '', credit: '', id: crypto.randomUUID() })
   const [form, setForm] = useState(voucher ? { ...voucher, memo: voucher.memo || '' } : {
     type: 'general', date: todayLocal(),
@@ -1831,6 +1831,9 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
 
   async function handleAttachmentDelete(attachment) {
     if (!confirm(`Remove "${attachment.name}"? This can't be undone.`)) return
+    // Taking a receipt off a posted voucher changes the final record, so it
+    // needs the edit password (adding one doesn't change the accounting).
+    if (voucher?.posted !== false && !(await askPassword('edit'))) return
     try {
       await deleteVoucherAttachment(voucher.id, attachment.id)
       setForm(f => ({ ...f, attachments: (f.attachments || []).filter(a => a.id !== attachment.id) }))
@@ -2279,7 +2282,11 @@ function VoucherModal({ voucher, onClose, onSave, clients, accounts, templates, 
             // A posted voucher is edited in place. Anything else can be kept
             // as a draft (doesn't count in reports yet) or posted (final).
             if (voucher && voucher.posted !== false) {
-              return <button className="btn btn-primary" disabled={invalid} onClick={() => onSave({ ...form, posted: true }, 'edit')}>Save Changes</button>
+              // The edit password is only for real changes: opening a posted
+              // voucher to look at it and clicking Save asks for nothing.
+              const changed = voucherContentKey(form) !== voucherContentKey(voucher)
+              return <button className="btn btn-primary" disabled={invalid}
+                onClick={() => (changed ? onSave({ ...form, posted: true }, 'edit') : onClose())}>Save Changes</button>
             }
             return (<>
               <button className="btn btn-ghost" disabled={invalid} onClick={() => onSave({ ...form, posted: false }, 'save')}>
@@ -2558,6 +2565,7 @@ export default function Vouchers() {
           deleteVoucherAttachment={deleteVoucherAttachment}
           onSaveTemplate={addTemplate}
           onDeleteTemplate={deleteTemplate}
+          askPassword={passwordOk}
           onClose={() => setModal(null)}
           onSave={async (form, action) => {
             // Checked here, before the modal closes, so someone who typed a

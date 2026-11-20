@@ -434,9 +434,22 @@ export async function hashSecret(secret, salt) {
 export const VOUCHER_ACTIONS = [
   { key: 'save', label: 'Save a draft', help: 'Creating a draft, or saving changes to one.' },
   { key: 'post', label: 'Post (make final)', help: 'Turning a voucher into a final one that counts in your reports.' },
-  { key: 'edit', label: 'Edit a posted voucher', help: 'Changing a voucher after it has been posted.' },
+  { key: 'edit', label: 'Edit a posted voucher', help: 'Saving real changes to a posted voucher, or removing its receipt. Just opening one never asks.' },
   { key: 'delete', label: 'Delete a voucher', help: 'Removing a voucher for good.' },
 ]
+// What a voucher actually says, for telling whether an edit changed
+// anything. Ignores attachments (saved on their own), blank lines, and
+// formatting differences like "100" vs "100.00" or a missing vs empty memo.
+export function voucherContentKey(v) {
+  const t = x => String(x ?? '').trim()
+  const n = x => (Math.round((parseFloat(x) || 0) * 100) / 100).toFixed(2)
+  const lines = (v?.entries || [])
+    .filter(e => t(e.account) || t(e.description) || parseFloat(e.debit) || parseFloat(e.credit))
+    .map(e => [t(e.account).toLowerCase(), t(e.description), n(e.debit), n(e.credit), t(e.clientId), t(e.dueDate)])
+  return JSON.stringify([t(v?.type), t(v?.date), t(v?.number), t(v?.reference), t(v?.memo), t(v?.clientId),
+    t(v?.payee), t(v?.payeeTin), t(v?.payeeAddress), lines])
+}
+
 export function voucherLock(settings, action) {
   const vp = settings?.voucherPasswords
   if (vp && typeof vp === 'object') return vp[action]?.hash ? vp[action] : null
